@@ -30,12 +30,11 @@
 - **日志分阶段 + 时间戳 + 耗时**：写剧本/转译/渲染/评分每阶段打印 `[HH:MM:SS]` 与耗时；日志可**自动/手动**刷新。
 - **LoRA 加载器**：可加多条 LoRA、各设强度，精渲与快速模式都生效。
 - **转译不限字数**：严格按剧本**逐拍详转写尽**，复杂剧本锚定更精确。
-- **发布包闭源**：`.py` 已转义（源码不出现中文），开箱即用。
 
 ## 环境要求
 
 - **Python 3.10+**（工作台只用标准库，无需第三方 pip 依赖；用系统 Python 即可）。
-- **ComfyUI**：已装 MiniMax-H3 模型（UNET/CLIP/VAE）、turbo LoRA（可选）、`ComfyUI-MiniMax-H3-Turbo` 与 `ComfyUI-KJNodes` 自定义节点。
+- **ComfyUI**：已装 MiniMax-H3 Ref2VA模型（UNET/CLIP/VAE）、turbo LoRA（minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors）、`ComfyUI-MiniMax-H3-Turbo` 与 `ComfyUI-KJNodes` 自定义节点。
 - **一个 OpenAI 兼容的 LLM 端点**（能看图/多模态，用于写剧本与评分；也可用云端 API）。
 - **ffmpeg**：需位于 PATH 且名为 `ffmpeg.exe`（用于评分前抽帧/抽音频；缺失会明确报错并中止，而不是无限重写）。
 - 参考音频分析需另配**音频 LLM**（可选）。
