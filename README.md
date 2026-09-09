@@ -34,7 +34,7 @@
 ## 环境要求
 
 - **Python 3.10+**（工作台只用标准库，无需第三方 pip 依赖；用系统 Python 即可）。
-- **ComfyUI**：已装 MiniMax-H3 Ref2VA模型（UNET/CLIP/VAE）、turbo LoRA（minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors）、`ComfyUI-MiniMax-H3-Turbo` 与 `ComfyUI-KJNodes` 自定义节点。
+- **ComfyUI**：已装 MiniMax-H3 Ref2VA模型（UNET/CLIP/VAE）、turbo LoRA（目前只适配了minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors，为可选项目，直接勾选调用或者在LoRA加载器里选择不需要额外Custom Node的其它Turbo LoRA并自行调整渲染参数）、`ComfyUI-MiniMax-H3-Turbo` 与 `ComfyUI-KJNodes` 自定义节点。
 - **一个 OpenAI 兼容的 LLM 端点**（能看图/多模态，用于写剧本与评分；也可用云端 API）。
 - **ffmpeg**：需位于 PATH 且名为 `ffmpeg.exe`（用于评分前抽帧/抽音频；缺失会明确报错并中止，而不是无限重写）。
 - 参考音频分析需另配**音频 LLM**（可选）。
