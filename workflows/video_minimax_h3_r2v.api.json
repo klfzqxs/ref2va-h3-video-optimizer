@@ -1,0 +1,310 @@
+{
+  "121": {
+    "class_type": "VAEDecodeAudio",
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "120",
+        0
+      ]
+    }
+  },
+  "122": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    }
+  },
+  "126": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "149",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    }
+  },
+  "129": {
+    "class_type": "RandomNoise",
+    "inputs": {
+      "noise_seed": 1066164605943836
+    }
+  },
+  "130": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "122",
+        0
+      ],
+      "audio": [
+        "121",
+        0
+      ],
+      "fps": 24,
+      "bit_depth": 8
+    }
+  },
+  "131": {
+    "class_type": "ComfyMathExpression",
+    "inputs": {
+      "values.a": [
+        "132",
+        0
+      ],
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17"
+    }
+  },
+  "120": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    }
+  },
+  "125": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "136",
+        1
+      ]
+    }
+  },
+  "148": {
+    "class_type": "PathchSageAttentionKJ",
+    "inputs": {
+      "model": [
+        "127",
+        0
+      ],
+      "sage_attention": "sageattn3",
+      "allow_compile": true
+    }
+  },
+  "128": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "minimax_h3_clip_qwen3vl.safetensors",
+      "type": "minimax",
+      "device": "default"
+    }
+  },
+  "136": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "146",
+        0
+      ],
+      "ref_images.ref_image_1": [
+        "157",
+        0
+      ],
+      "ref_images.ref_image_2": [
+        "156",
+        0
+      ],
+      "ref_images.ref_image_3": [
+        "174",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "167",
+        0
+      ],
+      "ref_audios.ref_audio_1": [
+        "171",
+        0
+      ],
+      "ref_audios.ref_audio_2": [
+        "172",
+        0
+      ],
+      "prompt": [
+        "138",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "131",
+        1
+      ],
+      "ref_image_size": "match"
+    }
+  },
+  "119": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    }
+  },
+  "92": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "130",
+        0
+      ],
+      "filename_prefix": "video/MiniMax_H3",
+      "format": "auto",
+      "codec": "auto"
+    }
+  },
+  "149": {
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "inputs": {
+      "model": [
+        "148",
+        0
+      ]
+    }
+  },
+  "151": {
+    "class_type": "Text Multiline",
+    "inputs": {
+      "text": "subject_definitions\n<Picture 1> is the first frame of [Shot 1], establishing the composition and environment.\n<Subject 1> is the main subject; its appearance follows <Picture 2>.\n<Subject 2> is the secondary subject present in <Picture 1>.\n<Subject 3> is the environment supplied entirely by <Picture 1>.\n<Audio 1> is the reference audio; only its pacing and character are referenced, not the original recording or timbre.\n\nsummary\n[keyframe completion + reference generation + audio reference] The target video is a single fixed cinematic shot beginning at <Picture 1>, following the composition, motion, and stylistic direction described above."
+    }
+  },
+  "171": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "ref_audio_1.wav"
+    }
+  },
+  "172": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "ref_audio_2.wav"
+    }
+  },
+  "123": {
+    "class_type": "KSamplerSelect",
+    "inputs": {
+      "sampler_name": "res_multistep"
+    }
+  },
+  "124": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "149",
+        0
+      ],
+      "scheduler": "sgm_uniform",
+      "steps": 20,
+      "denoise": 1
+    }
+  },
+  "167": {
+    "class_type": "LoadAudio",
+    "inputs": {
+      "audio": "ref_audio_3.wav"
+    }
+  },
+  "132": {
+    "class_type": "PrimitiveFloat",
+    "inputs": {
+      "value": 15
+    }
+  },
+  "146": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref_image.png"
+    }
+  },
+  "166": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref_image.png"
+    }
+  },
+  "157": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref_image.png"
+    }
+  },
+  "156": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref_image.png"
+    }
+  },
+  "174": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "ref_image.png"
+    }
+  },
+  "115": {
+    "class_type": "ResolutionSelector",
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 0.8,
+      "multiple": 32
+    }
+  },
+  "138": {
+    "class_type": "PrimitiveStringMultiline",
+    "inputs": {
+      "value": "subject_definitions\n<Picture 1> is the first frame of [Shot 1], establishing the composition and environment.\n<Subject 1> is the main subject; its appearance follows <Picture 2>.\n<Subject 2> is the secondary subject present in <Picture 1>.\n<Subject 3> is the environment supplied entirely by <Picture 1>.\n<Audio 1> is the reference audio; only its pacing and character are referenced, not the original recording or timbre.\n\nsummary\n[keyframe completion + reference generation + audio reference] The target video is a single fixed cinematic shot beginning at <Picture 1>, following the composition, motion, and stylistic direction described above."
+    }
+  },
+  "127": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_zs05_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    }
+  }
+}

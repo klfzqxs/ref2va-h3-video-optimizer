@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Runtime caches / generated graphs
+object_info.json
+_runs_*.json
+_run_*.json
+
+# Local task definitions & outputs (never commit the prompt corpus)
+tasks/
+outputs/
+runs/
+input/
+voicelib/
+
+# Private config with real endpoints
+config.local.json
+
+# Large binary model files (must NOT be pushed to Git)
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.sft
+
+# Media outputs
+*.mp4
+*.webm
+*.mov
+*.mkv
+*.wav
+*.flac
+
+# Reference images/audio
+*.png
+*.jpg
+*.jpeg
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

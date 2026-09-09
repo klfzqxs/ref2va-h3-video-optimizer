@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ref2VA H3 视频提示词优化器</title>
+<style>
+  :root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--ink:#e6e9ef;--dim:#9aa3b2;--acc:#4c8dff;--ok:#3ecf8e;--bad:#ff5d6c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,"Microsoft YaHei",sans-serif}
+  header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:5}
+  header h1{font-size:16px;margin:0;font-weight:600}
+  header .sub{color:var(--dim);font-size:12px}
+  main{padding:18px 20px;max-width:1120px;margin:0 auto}
+  h2{font-size:14px;margin:18px 0 8px;color:var(--acc)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+  .field label{display:block;color:var(--dim);font-size:12px;margin-bottom:4px}
+  .field input,.field select,.field textarea{width:100%;background:#0c0e12;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 10px;font:inherit}
+  .field textarea{min-height:72px;resize:vertical}
+  .checks{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+  .checks label{color:var(--dim);font-size:13px;display:flex;align-items:center;gap:6px}
+  .accent{border-left:3px solid var(--acc);padding:2px 0 2px 10px}
+  .row{display:flex;gap:12px;align-items:center;margin:14px 0}
+  button{background:var(--acc);color:#fff;border:0;border-radius:8px;padding:10px 18px;font:inherit;font-weight:600;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.ghost{background:#262c38}
+  button.small{padding:5px 10px;font-size:12px;font-weight:500}
+  #status{font-size:13px}
+  .badge{padding:2px 8px;border-radius:20px;font-size:12px}
+  .b-running{background:#2b3954;color:#9cc0ff}.b-done{background:#173d2c;color:var(--ok)}.b-error{background:#3f1d22;color:var(--bad)}.b-queued{background:#2a2f3a;color:var(--dim)}.b-cancelled{background:#3a3230;color:#e0a76a}
+  pre#log{background:#0c0e12;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:420px;overflow:auto;font:12px/1.5 Consolas,monospace;white-space:pre-wrap}
+  .out video{width:100%;border-radius:10px;background:#000}
+  .out a{color:var(--acc)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:10px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+  .card h3{margin:0 0 8px;font-size:13px}
+  .jobs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .refrow{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center}
+  .refrow input[type=file]{background:#0c0e12;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px;font-size:12px}
+  .hint{color:var(--dim);font-size:12px;margin-top:4px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Ref2VA 视频质量优化器</h1>
+  <span class="sub">顺序爬山 · 准入→演进 · 正式版</span>
+  <span id="status"></span>
+</header>
+<main>
+  <h2>任务设定</h2>
+  <div class="grid">
+    <div class="field"><label>任务名称</label><input id="name" value="mytask"></div>
+    <div class="field"><label>优化目标</label><input id="target" value="整体画质与表现最优"></div>
+    <div class="field"><label>视频时长（秒）</label><input id="duration" type="number" value="10"></div>
+  </div>
+  <div class="field accent"><label>画面内容描述（纯文字描述即可；不填参考图时即纯文字驱动 T2VA）</label>
+    <textarea id="story">清晨的山谷，晨雾在林间缓缓流动，阳光从云隙洒落，一条溪流蜿蜒而下，远处雪山映着晨光，环境声只有风声与鸟鸣。</textarea>
+  </div>
+
+  <h2>参考素材（每个都注明“参考什么”；可全部留空=T2VA）</h2>
+  <div class="checks" style="margin-bottom:6px">
+    <label>参考模式：</label>
+    <label><input type="radio" name="mode" value="A" checked> A · 仅参考图/文字（省显存、效果略差）</label>
+    <label><input type="radio" name="mode" value="B"> B · 视频编辑（显存消耗大、效果最佳）</label>
+  </div>
+
+  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">参考图像（可多组）</h4>
+  <div id="refrows"></div>
+  <div class="row"><button class="ghost small" onclick="addRow('refrows','ref')">＋ 添加参考图</button>（支持 jpg/png；不添加即为纯文字 T2VA）</div>
+
+  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">参考音频（可选，默认关闭评审；wav/mp3）</h4>
+  <div id="audrows"></div>
+  <div class="row"><button class="ghost small" onclick="addRow('audrows','audio')">＋ 添加参考音频</button></div>
+
+  <h2>模型 / 采样参数</h2>
+  <div class="grid"><div class="field"><label>ComfyUI 地址</label><input id="comfy_url" value="http://127.0.0.1:8000"></div></div>
+  <div class="grid">
+    <div class="field"><label>模型文件（UNET，ComfyUI 内全名，含子目录）</label><input id="model" list="modelList" placeholder="点下方「读取」自动列出，或手动填"><datalist id="modelList"></datalist></div>
+    <div class="field"><label>CLIP 模型（ComfyUI 内全名，含子目录）</label><input id="clip" list="clipList" placeholder="点下方「读取」自动列出，或手动填"><datalist id="clipList"></datalist></div>
+    <div class="field"><label>采样器（可输入，点「读取」自动列出）</label><input id="sampler" list="samplerList" value="res_multistep" placeholder="如 euler / res_multistep"><datalist id="samplerList"></datalist></div>
+    <div class="field"><label>调度器（可输入，点「读取」自动列出）</label><input id="scheduler" list="schedulerList" value="sgm_uniform" placeholder="如 sgm_uniform / karras"><datalist id="schedulerList"></datalist></div>
+    <div class="field"><label>步数</label><input id="steps" type="number" value="20"></div>
+    <div class="field"><label>Seed（留空=随机且全程恒定）</label><input id="seed" type="number"></div>
+    <div class="field"><label>分辨率 Multiplier（Megapixels）</label><input id="megapixels" type="number" step="0.1" value="0.6"></div>
+    <div class="field"><label>画幅</label><select id="aspect">
+      <option>16:9 (Widescreen)</option><option>9:16 (Portrait Widescreen)</option><option>1:1 (Square)</option><option>4:3 (Standard)</option><option>3:4 (Portrait Standard)</option><option>2:3 (Portrait Photo)</option><option>3:2 (Photo)</option><option>21:9 (Ultrawide)</option>
+    </select></div>
+    <div class="field"><label>准入线 / 迭代上限 / 同基线耐心</label>
+      <input id="admission" type="number" value="5" style="width:32%">&nbsp;<input id="maxiter" type="number" value="12" style="width:32%">&nbsp;<input id="patience" type="number" value="3" style="width:32%">
+    </div>
+  </div>
+  <div class="row"><button class="ghost small" onclick="loadModels()">读取 ComfyUI 模型列表</button><span class="hint" id="modelsHint">点此自动列出该 ComfyUI 已装模型名，在模型/CLIP/LoRA 输入框里选择即可（含子目录全名）</span></div>
+  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">LoRA（可选，精渲与快速模式都生效；可加多条）</h4>
+  <div id="lorarows"></div>
+  <div class="row"><button class="ghost small" onclick="addLoraRow()">＋ 添加 LoRA</button><span class="hint">选 LoRA 模型名 + 强度(0~2)；留空=不加</span></div>
+  <datalist id="loraList"></datalist>
+  <div class="checks">
+    <label><input id="quick" type="checkbox"> 快速工作流（turbo 8 步，需 turbo LoRA；若本机未装会自动回退标准工作流）</label>
+    <label><input id="fine" type="checkbox" checked> 结束精渲（全质量）</label>
+  </div>
+
+  <h2>LLM 端点（默认本地；不涉密内容可直接用云端 API）</h2>
+  <div class="grid">
+    <div class="field"><label>写剧/评分 LLM 地址（API 或本地）</label><input id="llm_base" value="http://127.0.0.1:8080/v1"></div>
+    <div class="field"><label>模型 id</label><input id="llm_model" list="llmModelList" placeholder="点下方「读取 LLM 模型」自动列出，或填模型名"><datalist id="llmModelList"></datalist></div>
+    <div class="field"><label>API Key（本地可留空；云端必填）</label><input id="llm_api_key" placeholder="sk-..."></div>
+  </div>
+  <div class="row"><button class="ghost small" onclick="loadLLMModels()">读取 LLM 模型列表</button><span class="hint" id="llmModelsHint">填好 LLM 地址/API Key 后读取该端点的可用模型 id</span></div>
+
+  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">音频评审（默认关闭；在线音频模型少、本地部署麻烦，需要时才开）</h4>
+  <div class="grid">
+    <div class="field"><label>音频 LLM 地址</label><input id="audio_base" placeholder="http://127.0.0.1:8081/v1"></div>
+    <div class="field"><label>音频模型 id</label><input id="audio_model"></div>
+    <div class="field"><label>音频 API Key</label><input id="audio_key"></div>
+  </div>
+  <div class="checks"><label><input id="audio_on" type="checkbox"> 开启音频评审（填上方信息才生效）</label></div>
+
+  <div class="row">
+    <button id="run">运行优化</button>
+    <button id="cancel" class="ghost" onclick="cancelJob()">终止当前任务</button>
+    <span class="badge b-queued" id="jobbadge">未运行</span>
+  </div>
+
+  <h2>运行日志</h2>
+  <div class="checks"><label><input id="logauto" type="checkbox" checked> 自动刷新</label><button class="ghost small" onclick="refreshLog()">刷新</button></div>
+  <pre id="log">（暂无）点击「运行优化」开始；结束后可查看结果视频。</pre>
+
+  <div class="cards">
+    <section class="card"><h3>结果视频</h3><div class="out" id="videos">— 完成后显示 —</div></section>
+    <section class="card"><h3>最优 Prompt</h3><div class="out" id="prompts">— 完成后显示 —</div></section>
+  </div>
+
+  <h2>历史</h2>
+  <div class="jobs" id="jobs">（无）</div>
+</main>
+<footer style="text-align:center;color:#666;font-size:12px;padding:18px 0 26px;">
+  MiniMAX H3 Reference to Video/Audio 提示词优化器 v1.0 正式版 · 有任何使用问题请联系作者
+</footer>
+
+<script>
+const $=id=>document.getElementById(id);
+let pollTimer=null, currentJob=null;
+
+function addRow(containerId, kind){
+  const c=$(containerId);
+  const d=document.createElement('div'); d.className='refrow';
+  d.innerHTML=`<input type="file" class="file" ${kind==='audio'?'accept="audio/*"':'accept="image/*"'}><input class="note" placeholder="这张${kind==='audio'?'音频':'图'}参考什么（如：${kind==='audio'?'流水声/鸟鸣/风声':'山峰/森林/瀑布/天空/光影'}）"><button class="ghost small" onclick="this.parentElement.remove()">删除</button>`;
+  c.appendChild(d);
+}
+function collectRows(containerId){
+  const out=[];
+  document.querySelectorAll('#'+containerId+' .refrow').forEach(r=>{
+    const f=r.querySelector('input.file').files[0];
+    const note=r.querySelector('input.note').value;
+    if(f) out.push({name:f.name, file:f, note:note});
+  });
+  return out;
+}
+function addLoraRow(name, strength){
+  const c=$('lorarows');
+  const d=document.createElement('div'); d.className='refrow';
+  d.innerHTML=`<input class="loname" list="loraList" placeholder="选 LoRA 模型名" value="${name||''}"><input class="lostr" type="number" step="0.05" min="0" max="2" value="${strength!=null?strength:1.0}"><button class="ghost small" onclick="this.parentElement.remove()">删除</button>`;
+  c.appendChild(d);
+}
+function collectLoras(){
+  const out=[];
+  document.querySelectorAll('#lorarows .refrow').forEach(r=>{
+    const name=r.querySelector('.loname').value.trim();
+    const str=parseFloat(r.querySelector('.lostr').value);
+    if(name) out.push({name:name, strength:(isNaN(str)?1.0:str)});
+  });
+  return out;
+}
+function fileB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});}
+
+async function loadModels(){
+  const h=$('modelsHint');
+  try{
+    const q=new URLSearchParams({comfy_url:$('comfy_url').value||''});
+    const r=await fetch('/api/models?'+q.toString()); const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    const fill=(id,arr)=>{ const dl=$(id); dl.innerHTML=(arr||[]).map(x=>`<option value="${x}">`).join(''); };
+    fill('modelList', j.unet||[]); fill('clipList', j.clip||[]); fill('loraList', j.lora||[]);
+    fill('samplerList', j.samplers||[]); fill('schedulerList', j.schedulers||[]);
+    h.textContent='已读取：UNET '+(j.unet||[]).length+'，CLIP '+(j.clip||[]).length+'，LoRA '+(j.lora||[]).length+'，sampler '+(j.samplers||[]).length+'，scheduler '+(j.schedulers||[]).length+'。';
+    if(j.unet&&j.unet.length) h.textContent+='（示例：'+j.unet[0]+'）';
+  }catch(e){ h.textContent='读取失败：'+e.message; }
+}
+async function loadLLMModels(){
+  const h=$('llmModelsHint');
+  try{
+    const q=new URLSearchParams({llm_base:$('llm_base').value||'', llm_key:$('llm_api_key').value||''});
+    const r=await fetch('/api/models?'+q.toString()); const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    $('llmModelList').innerHTML=(j.llm_models||[]).map(x=>`<option value="${x}">`).join('');
+    h.textContent='已读取 LLM 模型 '+(j.llm_models||[]).length+' 个。'+(j.llm_models&&j.llm_models.length?('（示例：'+j.llm_models[0]+'）'):'');
+  }catch(e){ h.textContent='读取失败：'+e.message; }
+}
+async function run(){
+  const files=[];
+  for(const it of collectRows('refrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
+  for(const it of collectRows('audrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
+  if(!$('llm_base').value || !$('llm_model').value){
+    $('status').textContent='请填 LLM 地址与模型 id'; return;
+  }
+  const payload={
+    name:$('name').value, story:$('story').value, optimize_target:$('target').value,
+    duration:+($('duration').value||10), model:$('model').value||null, clip:$('clip').value||null,
+    loras:collectLoras(),
+    sampler:$('sampler').value, scheduler:$('scheduler').value, steps:+($('steps').value||20),
+    seed:$('seed').value? +$('seed').value : null, megapixels:+($('megapixels').value||0.6),
+    aspect:$('aspect').value, video_edit:(document.querySelector('input[name=mode]:checked').value==='B'),
+    llm_base:$('llm_base').value, llm_model:$('llm_model').value, llm_api_key:$('llm_api_key').value||null,
+    audio_llm_base:$('audio_base').value||null, audio_llm_model:$('audio_model').value||null,
+    audio_llm_api_key:$('audio_key').value||null,
+    audio_scoring:$('audio_on').checked? 'on':'off',
+    comfy_url:$('comfy_url').value, quick_workflow:$('quick').checked, fine_render:$('fine').checked,
+    admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
+    base_patience:+($('patience').value||3), files
+  };
+  $('run').disabled=true; $('jobbadge').className='badge b-running'; $('jobbadge').textContent='提交中…';
+  try{
+    const r=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(!r.ok){throw new Error(j.error||('HTTP '+r.status));}
+    currentJob=j.id; $('run').disabled=false; $('run').textContent='任务排队';
+    $('jobbadge').className='badge b-queued'; $('jobbadge').textContent='排队 #'+(j.position||1)+' '+j.id; $('log').textContent='';
+    saveForm(); loadJobs(); poll(); maybeStartPoll();
+  }catch(e){ $('status').textContent='启动失败：'+e.message; $('run').disabled=false; $('run').textContent='运行优化'; $('jobbadge').className='badge b-error'; $('jobbadge').textContent='失败'; }
+}
+async function poll(){
+  if(!currentJob) return;
+  try{
+    const r=await fetch('/api/jobs/'+currentJob); const j=await r.json();
+    $('log').textContent=j.log||''; $('log').scrollTop=$('log').scrollHeight;
+    const badge=$('jobbadge');
+    if(j.status==='queued'){ badge.className='badge b-queued'; badge.textContent='排队 #'+(j.position||1)+' '+j.id; }
+    else if(j.status==='running'){ badge.className='badge b-running'; badge.textContent='运行中 '+j.id; }
+    else { badge.className='badge b-'+j.status; badge.textContent=j.status+' '+j.id; }
+    if(j.status==='done'||j.status==='error'){
+      $('run').disabled=false;
+      $('videos').innerHTML=j.outputs&&j.outputs.videos.length? j.outputs.videos.map(u=>`<video controls src="${u}"></video>`).join('') : '（未找到视频文件）';
+      $('prompts').innerHTML=j.outputs&&j.outputs.prompts.length? j.outputs.prompts.map(u=>`<a href="${u}" target="_blank">查看 ${u.split('/').pop()}</a>`).join('<br>') : '—';
+    }
+    await loadJobs();   // refresh history + run label (stops polling when idle)
+  }catch(e){ }
+}
+function startPoll(){ clearInterval(pollTimer); pollTimer=setInterval(poll,2000); }
+function stopPoll(){ clearInterval(pollTimer); }
+function maybeStartPoll(){ if($('logauto')&&$('logauto').checked){ stopPoll(); pollTimer=setInterval(poll,2000); } }
+function refreshLog(){ poll(); }
+async function cancelJob(){
+  if(!currentJob){ $('status').textContent='没有正在查看的任务'; return; }
+  try{
+    const r=await fetch('/api/cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:currentJob})});
+    const j=await r.json();
+    if(r.ok){ $('status').textContent='已请求终止 #'+currentJob+'（'+j.status+'）'; loadJobs(); }
+    else $('status').textContent='终止失败：'+(j.error||r.status);
+  }catch(e){ $('status').textContent='终止失败：'+e.message; }
+}
+async function loadJobs(){
+  try{ const r=await fetch('/api/jobs'); const j=await r.json(); const el=$('jobs');
+    const items=j.jobs||[];
+    const active=items.some(x=>x.status==='running'||x.status==='queued');
+    $('run').textContent= active ? '任务排队' : '运行优化';
+    $('cancel').style.display = active ? '' : 'none';
+    if(!active){ stopPoll(); }   // idle: stop polling (final state already shown)
+    if(!items.length){ el.textContent='（无）'; return; }
+    el.innerHTML=items.map(x=>`<button class="ghost small" onclick="openJob('${x.id}')">${(x.name||x.id)} · ${x.status}${x.status==='queued'?(' (#'+x.position+')'):''}</button>`).join('');
+  }catch(e){}
+}
+async function openJob(id){
+  currentJob=id;
+  try{ const r=await fetch('/api/jobs/'+id); const j=await r.json(); if(j.form) applyForm(j.form); }catch(e){}
+  $('jobbadge').textContent='查看 #'+id; $('log').textContent='加载中…'; poll(); maybeStartPoll();
+}
+
+const FORM_IDS=['name','target','duration','story','model','clip','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
+function saveForm(){
+  try{
+    const o={}; FORM_IDS.forEach(id=>{o[id]=$(id)?$(id).value:'';});
+    o.quick=$('quick').checked; o.fine=$('fine').checked; o.audio_on=$('audio_on').checked;
+    const m=document.querySelector('input[name=mode]:checked'); o.mode=m?m.value:'A';
+    o.refNotes=[...document.querySelectorAll('#refrows .refrow')].map(r=>r.querySelector('.note').value);
+    o.audioNotes=[...document.querySelectorAll('#audrows .refrow')].map(r=>r.querySelector('.note').value);
+    o.loras=collectLoras();
+    localStorage.setItem('ref2va_form', JSON.stringify(o));
+  }catch(e){}
+}
+function restoreForm(){
+  try{
+    const o=JSON.parse(localStorage.getItem('ref2va_form')||'{}');
+    FORM_IDS.forEach(id=>{ if($(id)&&o[id]!=null) $(id).value=o[id]; });
+    if(o.quick!=null)$('quick').checked=!!o.quick;
+    if(o.fine!=null)$('fine').checked=!!o.fine;
+    if(o.audio_on!=null)$('audio_on').checked=!!o.audio_on;
+    if(o.mode){const r=document.querySelector('input[name=mode][value="'+o.mode+'"]'); if(r)r.checked=true;}
+    const mk=(cont,notes)=>{ $(cont).innerHTML=''; (notes||[]).forEach(n=>{ addRow(cont, cont==='refrows'?'ref':'audio'); const nr=$(cont).lastElementChild; nr.querySelector('.note').value=n; }); if(!$(cont).children.length) addRow(cont, cont==='refrows'?'ref':'audio'); };
+    mk('refrows', o.refNotes); mk('audrows', o.audioNotes);
+    if(o.loras&&o.loras.length){ $('lorarows').innerHTML=''; o.loras.forEach(l=>addLoraRow(l.name,l.strength)); }
+    if(!$('lorarows').children.length) addLoraRow();
+  }catch(e){
+    if(!$('refrows').children.length) addRow('refrows','ref');
+    if(!$('audrows').children.length) addRow('audrows','audio');
+  }
+  if(!$('refrows').children.length) addRow('refrows','ref');
+  if(!$('audrows').children.length) addRow('audrows','audio');
+}
+function bindSave(){ document.addEventListener('input', debounce(saveForm,400)); document.addEventListener('change', debounce(saveForm,400)); }
+const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
+function applyForm(f){
+  if(!f) return;
+  Object.entries(APPLY_MAP).forEach(([id,key])=>{ if($(id)&&f[key]!=null&&f[key]!=='') $(id).value=f[key]; });
+  if(f.quick_workflow!=null) $('quick').checked=!!f.quick_workflow;
+  if(f.fine_render!=null) $('fine').checked=!!f.fine_render;
+  if(f.audio_scoring!=null) $('audio_on').checked=(f.audio_scoring==='on');
+  if(f.video_edit!=null){ const r=document.querySelector('input[name=mode][value="'+(f.video_edit?'B':'A')+'"]'); if(r) r.checked=true; }
+  const files=f.files||[];
+  const isAud=n=>/\.(wav|mp3|m4a|flac|ogg)$/i.test(n||'');
+  const imgs=files.filter(x=>!isAud(x.name)), auds=files.filter(x=>isAud(x.name));
+  const mk=(cont,arr,kind)=>{ $(cont).innerHTML=''; (arr||[]).forEach(x=>{ addRow(cont,kind); const nr=$(cont).lastElementChild; nr.querySelector('.note').value=x.note||''; }); };
+  mk('refrows',imgs,'ref'); mk('audrows',auds,'audio');
+  if(!$('refrows').children.length) addRow('refrows','ref');
+  if(!$('audrows').children.length) addRow('audrows','audio');
+  if(f.loras&&f.loras.length){ $('lorarows').innerHTML=''; f.loras.forEach(l=>addLoraRow(l.name,l.strength)); }
+  if(!$('lorarows').children.length) addLoraRow();
+}
+$('run').onclick=run; loadJobs(); restoreForm(); bindSave();
+$('logauto').onchange=function(){ if(this.checked){ maybeStartPoll(); } else { stopPoll(); } };
+</script>
+</body>
+</html>
