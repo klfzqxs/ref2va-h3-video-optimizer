@@ -54,25 +54,26 @@
 
 ## 二、修复的问题
 
-| # | 问题 | 修复 |
-|---|------|------|
-| 1 | 工作流含一个风格化 LoRA | 从两套工作流移除，模型链重新连接（保留 turbo 提速 LoRA 与 attention 优化）。 |
-| 2 | 模型/CLIP 用中性占位名 → ComfyUI 报 `not in list` | 改为从配置读真实名（含子目录），并用模型列表下拉选择；提交前自动规范化。 |
-| 3 | 0 参考图(T2VA) 时模板遗留占位 LoadImage/LoadAudio → `Invalid image file` | 构图时删除所有占位 LoadImage/LoadAudio 节点，只保留真正接线的参考。 |
-| 4 | 提示词时长写死 15 秒 | dir_prompt 与导演提示词改用配置时长，与渲染一致。 |
-| 5 | 缺 ffmpeg 时无限重写提示词 | 启动检测 ffmpeg，缺失则明确报错并中止（含安装指引），不再死循环。 |
-| 6 | 日志只显示 `[server] starting` 不滚动 | 子进程加 `-u` 实时输出；启动打印 LLM 地址/模型、参考方式、渲染中提示。 |
-| 7 | 一跑真任务就崩 `AttributeError: no attribute 'SYSTEM_DIRECTOR'` | 常量改函数 `system_director(duration)`，调用点同步。 |
-| 8 | B 方式(VHS 参考视频) 缺输入/`Invalid video file` | 补 VHS 节点必填输入；参考视频改经 ComfyUI `/upload` 上传（落进 ComfyUI 的 input 目录）。 |
-| 9 | 连发任务时 `/api/jobs` 卡死 | 修 `_queue_position` 嵌套 Lock 死锁（移到锁外）。 |
-| 10 | 刷新页面丢预填信息 | 表单 localStorage 持久化，加载自动恢复。 |
-| 11 | 提交后日志不再自动滚动 | `run()` 改用定时轮询，日志实时滚到底部。 |
-| 12 | 画幅下拉用了非 ComfyUI 值 → `not in list` | 改为 ComfyUI ResolutionSelector 准确值。 |
-| 13 | 采样器/调度器下拉塞太多选项不好选 | 改为可输入+自动补全（datalist）。 |
-| 14 | 读取模型连不上/读到旧地址/单节点端点 404 | `/api/models` 按表单 ComfyUI 地址查；`_remote_object_list` 去尾斜杠、单节点端点 404 回退全量。 |
-| 15 | 转译被 500 字限制，复杂剧本锚定不精确 | 移除字数限制，按剧本逐拍详转写尽；提高输出上限。 |
-| 16 | 剧本缺失（空剧本）仍继续 | 加 `_valid_script` 校验：缺 summary_zh/分镜判失败重试，绝不把空剧本送去转译/渲染。 |
-| 17 | 参考音频功能不生效（缺少听声分析环节） | 加 `analyze_ref_audio`：把用途+声音特征写入提示词；并让导演在 `closed_loop_notes`/`audio_note` 引用参考音频、格式师生成 `<Audio N>` 引用。 |
+| # | 修复内容 |
+|---|---------|
+| 1 | 修复了工作流里残留的一个风格化 LoRA 的问题 |
+| 2 | 修复了模型名/CLIP 用中性占位名导致 ComfyUI 报 `not in list` 的问题 |
+| 3 | 修复了纯文字(T2VA)模式残留占位 LoadImage/LoadAudio 导致 `Invalid image file` 的问题 |
+| 4 | 修复了提示词时长写死 15 秒的问题 |
+| 5 | 修复了缺 ffmpeg 时无限重写提示词的问题 |
+| 6 | 修复了日志只显示 `[server] starting` 不滚动的问题 |
+| 7 | 修复了使用部分 AMD 显卡和 ROCm 版本 ComfyUI 时会偶发出现掉驱动的问题 |
+| 8 | 修复了 B 路径（视频修改）优化模式无法正常使用的问题 |
+| 9 | 修复了连发任务时 `/api/jobs` 卡死的问题 |
+| 10 | 修复了刷新页面会丢失预填信息的问题 |
+| 11 | 修复了一跑真任务就崩 `AttributeError` 的问题 |
+| 12 | 修复了提交后日志不再自动滚动的问题 |
+| 13 | 修复了画幅下拉用了非 ComfyUI 值导致 `not in list` 的问题 |
+| 14 | 修复了采样器/调度器下拉选项太多不好点选的问题 |
+| 15 | 修复了读取模型连不上或读到旧地址的问题 |
+| 16 | 修复了转译被 500 字限制、复杂剧本锚定不精确的问题 |
+| 17 | 修复了剧本缺失（空剧本）仍继续优化的问题 |
+| 18 | 修复了参考音频功能不生效（缺少听声分析）的问题 |
 
 ---
 
