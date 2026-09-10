@@ -371,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
                 entry["note"] = note
             (audios if kind == "audio" else refs).append(entry)
 
-        # ---- \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff0c\u53c2\u8003\u56fe/\u89c6\u9891\uff09/ i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u514d\u8f6c\u8bd1\uff09----
+        # ---- \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff0c\u53c2\u8003\u56fe/\u89c6\u9891\uff09/ i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u82f1\u6587\u63d0\u793a\u8bcd\uff09----
         flow = (payload.get("flow") or "ref2va").strip().lower()
         if flow == "i2va":
             if not refs:

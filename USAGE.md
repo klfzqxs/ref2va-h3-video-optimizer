@@ -85,7 +85,7 @@ python optimizer.py --config config.json
 | 流程 | 配置 | 说明 |
 |------|------|------|
 | **Ref2VA** | `"flow": "ref2va"`（默认） | 参考图/视频 → 视频。支持多张参考图 + 参考音频、A/B 两种参考方式；成稿为**六段英文** full-reference 提示词（经转译）。 |
-| **I2VA** | `"flow": "i2va"` | 首帧图生视频。**只取第 1 张**参考图并**强制作为视频第一帧**；按 MiniMax 官方 I2VA 规则直出**中文**提示词（首帧声明 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music`），**免转译**；不吃参考音频、无快速渲染模式。缺图会在加载配置时直接报错。 |
+| **I2VA** | `"flow": "i2va"` | 首帧图生视频。**只取第 1 张**参考图并**强制作为视频第一帧**；按 MiniMax 官方 I2VA 规范直出**英文**提示词（首帧声明 + `integrated_multimodal_description` / `overall_soundscape` / `non_diegetic_music`）；剧本仍为中文，仅台词/画面内文字按规范逐字保留原文。不吃参考音频、无快速渲染模式。缺图会在加载配置时直接报错。 |
 
 > I2VA 使用 `workflows/video_minimax_h3_i2v.api.json`（`MiniMaxH3ImageToVideo`）。时长、种子、分辨率/画幅、**采样器/调度器/步数**、模型/CLIP 与 LoRA 均按 config（或页面表单）生效。**该工作流不含任何内置 LoRA**——需要加速 LoRA（lightx2v / motion enhancer 之类）时，在 `loras` 里自行添加。
 
