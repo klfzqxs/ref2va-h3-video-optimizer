@@ -71,7 +71,7 @@
 | `audio_llm_base` / `audio_llm_model` / `audio_llm_api_key` | 音频 LLM（可选，做参考音频分析/音频评审） |
 | `comfy_url` | ComfyUI 地址（默认 `http://127.0.0.1:8000`） |
 | `model` / `clip` / `loras` | 模型名 / CLIP 名 / `[{name,strength}]`（ComfyUI 内全名，提交前自动规范化） |
-| `sampler` / `scheduler` / `steps` | 采样器/调度器/步数；快速工作流会固定 `euler+beta+8`，**I2VA 工作流自带 turbo，不从表单覆盖** |
+| `sampler` / `scheduler` / `steps` | 采样器/调度器/步数；**两条流程均按此生效**（快速工作流会固定 `euler+beta+8`） |
 | `megapixels` / `aspect` / `duration` | 分辨率 / 画幅 / 时长 |
 | `quick_workflow` / `fine_render` | 快速(turbo 8 步) / 结束精渲 |
 | `admission_threshold` / `max_iterations` / `base_patience` | 准入线 / 迭代上限 / 同基线耐心 |

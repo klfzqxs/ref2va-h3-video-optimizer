@@ -584,6 +584,8 @@ I2V_IMAGE = "114"           # LoadImage\uff08\u9996\u5e27\u53c2\u8003\u56fe\uff0
 I2V_DURATION = "105:111"    # PrimitiveFloat\uff08\u65f6\u957f\u79d2\uff09
 I2V_SEED = "105:15"         # RandomNoise
 I2V_RES = "115"             # ResolutionSelector
+I2V_SAMPLER = "105:17"      # KSamplerSelect
+I2V_SCHED = "105:9"         # BasicScheduler\uff08scheduler / steps / denoise\uff09
 
 
 def make_graph_quick(cfg):
@@ -638,8 +640,8 @@ def make_graph_i2v(cfg):
       weight_dtype: str   \u9ed8\u8ba4 default
       loras       : []    \u7528\u6237 LoRA\uff08\u4e32\u5728\u5185\u7f6e turbo LoRA \u4e4b\u524d\uff09
       seed / duration_s / megapixels / aspect_ratio
-    \u6ce8\u610f\uff1aI2V \u5de5\u4f5c\u6d41\u7684 sampler/scheduler/steps \u7531\u6a21\u677f\u56fa\u5b9a\uff08turbo\uff09\uff0c\u4e0d\u4ece\u8868\u5355\u8986\u76d6\uff1b
-    \u8be5\u5de5\u4f5c\u6d41\u4e0d\u5403\u53c2\u8003\u97f3\u9891\uff0c\u6545\u5ffd\u7565 ref_audios\u3002
+      sampler / scheduler / steps / denoise\uff1a\u4e0e\u6807\u51c6\u5de5\u4f5c\u6d41\u4e00\u81f4\uff0c\u8bfb\u53d6\u524d\u7aef\u8bbe\u7f6e
+    \u6ce8\u610f\uff1a\u8be5\u5de5\u4f5c\u6d41\u4e0d\u5403\u53c2\u8003\u97f3\u9891\uff0c\u6545\u5ffd\u7565 ref_audios\u3002
     """
     with open(I2V_WF, encoding="utf-8") as f:
         graph = json.load(f)
@@ -662,6 +664,14 @@ def make_graph_i2v(cfg):
 
     # --- \u7528\u6237 LoRA\uff08\u4e32\u5728 UNET \u4e4b\u540e\u3001\u5185\u7f6e turbo LoRA \u4e4b\u524d\uff09 ---
     _apply_lora(graph, cfg, unet_id=I2V_UNET)
+
+    # --- \u91c7\u6837\u5668 / \u8c03\u5ea6\u5668 / \u6b65\u6570\uff08\u8bfb\u53d6\u524d\u7aef\u8bbe\u7f6e\uff0c\u4e0e\u6807\u51c6\u5de5\u4f5c\u6d41\u4e00\u81f4\uff09---
+    if cfg.get("sampler"):
+        graph[I2V_SAMPLER]["inputs"]["sampler_name"] = cfg["sampler"]
+    if cfg.get("scheduler"):
+        graph[I2V_SCHED]["inputs"]["scheduler"] = cfg["scheduler"]
+    graph[I2V_SCHED]["inputs"]["steps"] = int(cfg.get("steps", 16))
+    graph[I2V_SCHED]["inputs"]["denoise"] = float(cfg.get("denoise", 1.0))
 
     # --- \u65f6\u957f / \u79cd\u5b50 / \u5206\u8fa8\u7387 ---
     graph[I2V_DURATION]["inputs"]["value"] = float(cfg.get("duration_s", 15.0))
