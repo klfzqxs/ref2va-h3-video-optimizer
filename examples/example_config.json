@@ -1,6 +1,7 @@
 {
   "story": "A single continuous take: morning in a mountain valley, fog drifting slowly through the forest, sunlight breaking through the clouds, a clear stream winding downhill and distant snow peaks glowing in the dawn light; the only sound is wind and distant birdsong.",
   "optimize_target": "Coherent natural scenery, realistic flowing water and drifting mist, consistent lighting and stable camera throughout the shot, and clean ambient audio.",
+  "flow": "ref2va",
   "refs": [
     {"path": "/absolute/path/to/your/mountain_reference.png"},
     {"path": "/absolute/path/to/your/waterfall_reference.png"}
