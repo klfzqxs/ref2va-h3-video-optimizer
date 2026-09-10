@@ -184,7 +184,8 @@ def _form_meta(payload):
         "loras": payload.get("loras"),
         "sampler": payload.get("sampler"), "scheduler": payload.get("scheduler"), "steps": payload.get("steps"),
         "seed": payload.get("seed"), "megapixels": payload.get("megapixels"), "aspect": payload.get("aspect"),
-        "video_edit": bool(payload.get("video_edit")), "llm_base": payload.get("llm_base"),
+        "video_edit": bool(payload.get("video_edit")), "flow": payload.get("flow") or "ref2va",
+        "llm_base": payload.get("llm_base"),
         "llm_model": payload.get("llm_model"), "llm_api_key": payload.get("llm_api_key"),
         "audio_llm_base": payload.get("audio_llm_base"), "audio_llm_model": payload.get("audio_llm_model"),
         "audio_llm_api_key": payload.get("audio_llm_api_key"), "audio_scoring": payload.get("audio_scoring") or "off",
@@ -370,13 +371,23 @@ class Handler(BaseHTTPRequestHandler):
                 entry["note"] = note
             (audios if kind == "audio" else refs).append(entry)
 
+        # ---- \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff0c\u53c2\u8003\u56fe/\u89c6\u9891\uff09/ i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u514d\u8f6c\u8bd1\uff09----
+        flow = (payload.get("flow") or "ref2va").strip().lower()
+        if flow == "i2va":
+            if not refs:
+                self._send(400, {"error": "I2VA \u6d41\u7a0b\u5fc5\u987b\u4e0a\u4f20 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27"})
+                return
+            refs = refs[:1]      # \u53ea\u53d6\u7b2c 1 \u5f20\u53c2\u8003\u56fe\u5f3a\u5236\u4f5c\u4e3a\u89c6\u9891\u7b2c\u4e00\u5e27
+            audios = []          # I2V \u5de5\u4f5c\u6d41\u4e0d\u5403\u53c2\u8003\u97f3\u9891
+
         outdir = os.path.join(OUTPUT_DIR, tid)
         cfg = {
             "story": payload["story"],
+            "flow": flow,
             "optimize_target": payload.get("optimize_target") or "overall quality and performance",
             "refs": refs,
             "audios": audios,
-            "video_edit": bool(payload.get("video_edit")),
+            "video_edit": bool(payload.get("video_edit")) and flow != "i2va",
             "video_ref": None,                       # B mode: optimizer auto-uses previous step's video
             "llm_base": payload["llm_base"],
             "llm_model": payload["llm_model"],
@@ -397,7 +408,7 @@ class Handler(BaseHTTPRequestHandler):
             "megapixels": float(payload.get("megapixels") or 0.6),
             "aspect": payload.get("aspect") or "16:9 (Widescreen)",
             "duration": float(payload.get("duration") or 10),
-            "quick_workflow": bool(payload.get("quick_workflow")),
+            "quick_workflow": bool(payload.get("quick_workflow")) and flow != "i2va",
             "fine_render": bool(payload.get("fine_render")),
             "admission_threshold": float(payload.get("admission_threshold") or 5),
             "max_iterations": int(payload.get("max_iterations") or 12),

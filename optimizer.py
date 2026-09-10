@@ -79,10 +79,20 @@ def _quick_lora_available():
         return False
 
 
+def _flow(cfg):
+    """\u5f53\u524d\u6d41\u7a0b\uff1aref2va\uff08\u53c2\u8003\u56fe/\u89c6\u9891\u2192\u89c6\u9891\uff0c\u516d\u6bb5\u82f1\u6587\uff09\u6216 i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u4e2d\u6587\u76f4\u51fa\uff09\u3002"""
+    return (cfg.get("flow") or "ref2va").strip().lower()
+
+
 def build_gcfg(cfg, prompt, seed):
+    flow = _flow(cfg)
+    i2v = flow == "i2va"
     return {
         "prompt": prompt,
-        "ref_images": cfg["_ref_names"], "ref_audios": cfg["_aud_names"],
+        "flow": flow,
+        # I2VA \u53ea\u7528\u7b2c 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff08make_graph_i2v \u5185\u90e8\u53d6 ref_images[0]\uff09
+        "ref_images": cfg["_ref_names"][:1] if i2v else cfg["_ref_names"],
+        "ref_audios": cfg["_aud_names"],
         "seed": seed,
         "duration_s": cfg.get("duration", 10),
         "steps": cfg.get("steps", 20), "denoise": 1.0,
@@ -91,18 +101,24 @@ def build_gcfg(cfg, prompt, seed):
         "sampler": cfg.get("sampler"), "scheduler": cfg.get("scheduler"),
         "megapixels": cfg.get("megapixels"),
         "aspect_ratio": normalize_aspect(cfg.get("aspect")),
-        "_quick": bool(cfg.get("quick_workflow")),
-        "video_ref": cfg.get("video_ref"),
+        # I2VA \u7684\u5de5\u4f5c\u6d41\u672c\u8eab\u5373 turbo\uff08lightx2v\uff09\uff0c\u4e0d\u8bbe\u5feb\u901f\u6e32\u67d3\u6a21\u5f0f
+        "_quick": False if i2v else bool(cfg.get("quick_workflow")),
+        # I2VA \u53ea\u5403\u9996\u5e27\uff0c\u6ca1\u6709 B \u65b9\u5f0f\uff08\u89c6\u9891\u7f16\u8f91\uff09\u6f14\u5316
+        "video_ref": None if i2v else cfg.get("video_ref"),
     }
 
 
 def render(gcfg, rundir):
     _quick = gcfg.pop("_quick", False)
-    if _quick and not _quick_lora_available():
-        print("    [warn] \u672a\u68c0\u6d4b\u5230 turbo LoRA\uff0c\u5feb\u901f\u5de5\u4f5c\u6d41\u56de\u9000\u4e3a\u6807\u51c6\u5de5\u4f5c\u6d41", file=sys.stderr)
-        _quick = False
     _stage("\u6e32\u67d3")
-    graph = ra.make_graph_quick(gcfg) if _quick else ra.make_graph(gcfg)
+    if (gcfg.get("flow") or "ref2va") == "i2va":
+        print("  \u23f3 I2VA \u9996\u5e27\u56fe\u751f\u89c6\u9891\uff08lightx2v turbo\uff09")
+        graph = ra.make_graph_i2v(gcfg)          # I2VA \u65e0\u5feb\u901f/\u7cbe\u6e32\u4e4b\u5206\uff0c\u56fa\u5b9a\u8d70 I2V \u5de5\u4f5c\u6d41
+    else:
+        if _quick and not _quick_lora_available():
+            print("    [warn] \u672a\u68c0\u6d4b\u5230 turbo LoRA\uff0c\u5feb\u901f\u5de5\u4f5c\u6d41\u56de\u9000\u4e3a\u6807\u51c6\u5de5\u4f5c\u6d41", file=sys.stderr)
+            _quick = False
+        graph = ra.make_graph_quick(gcfg) if _quick else ra.make_graph(gcfg)
     print(f"  \u23f3 ComfyUI \u6e32\u67d3\u4e2d\uff08{rundir}\uff09\uff0c\u6b64\u6b65\u901a\u5e38\u9700\u8981\u6570\u5206\u949f\uff0c\u8bf7\u8010\u5fc3\u7b49\u5f85\u2026")
     res = ra.submit_and_fetch(graph, rundir, timeout_s=7200)
     vids = ra.extract_videos(res)
@@ -369,6 +385,17 @@ _IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a\u56
              "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u89c6\u9891\u5f00\u5934\u7684\u573a\u666f\u3001\u4e3b\u4f53\u7684\u59ff\u6001\u3001\u670d\u88c5\u4e0e\u4f53\u6001\uff0c\u4f7f\u9996\u5e27\u4e0e\u56fe1\u5b8c\u5168\u4e00\u81f4\uff1b"
              "\u5e76\u4fdd\u8bc1\u5168\u7a0b\u955c\u5934\u65e0\u4efb\u4f55\u5207\u6362/\u8fd0\u955c/\u63a8\u62c9\u3002")
 
+_I2VA_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a <Picture 1>\uff0c\u5373\u76ee\u6807\u89c6\u9891 0.00 \u79d2\u7684\u7b2c\u4e00\u5e27\u3002"
+                  "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u5176\u98ce\u683c\u3001\u4e3b\u4f53\u5916\u89c2\u3001\u6784\u56fe\u4e0e\u573a\u666f\u951a\u70b9\uff0c\u5e76\u8ba9\u540e\u7eed\u52a8\u4f5c\u4ece\u8fd9\u4e00\u5e27\u81ea\u7136\u53d1\u5c55"
+                  "\uff08I2VA \u5141\u8bb8\u5206\u955c\u4e0e\u955c\u5934\u8fd0\u52a8\uff0c\u6309\u5b98\u65b9\u89c4\u5219\u5199\uff09\u3002")
+
+
+def _img_hint(cfg, has_img):
+    """\u5199\u5267\u672c\u65f6\u9644\u56fe\u8bf4\u660e\uff1aI2VA \u7528\u9996\u5e27\u7248\uff08\u5141\u8bb8\u5206\u955c/\u8fd0\u955c\uff09\uff0cRef2VA \u7528\u539f\u7248\uff08\u9501\u5b9a\u9996\u5e27\u4e0d\u5207\u955c\uff09\u3002"""
+    if not has_img:
+        return ""
+    return _I2VA_IMG_HINT if _flow(cfg) == "i2va" else _IMG_HINT
+
 
 def _valid_script(s):
     """\u5267\u672c\u5fc5\u987b\u975e\u7a7a\uff1a\u6709 summary_zh \u4e14\u81f3\u5c11\u4e00\u62cd\uff08\u542b beat/frame_note\uff09\u3002"""
@@ -448,6 +475,34 @@ def _translate(llm, cfg, script, tag):
     return prompt
 
 
+def _compose_i2va(llm, cfg, script, tag):
+    """I2VA\uff1a\u628a\u5267\u672c\u4e2d\u95f4\u4ea7\u7269**\u76f4\u63a5**\u5199\u6210\u6700\u7ec8\u4e2d\u6587 I2VA \u63d0\u793a\u8bcd\uff08\u9996\u5e27\u58f0\u660e + \u4e09\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff09\u3002
+    \u6309\u5b98\u65b9 I2VA \u89c4\u5219\u6210\u7a3f\uff0c**\u4e0d\u7ecf\u8f6c\u8bd1**\uff0c\u6210\u54c1\u76f4\u63a5\u5582\u7ed9 MiniMaxH3ImageToVideo\u3002"""
+    _stage("\u5199\u63d0\u793a\u8bcd")
+    dur = float(cfg.get("duration", 10) or 10)
+    refs = cfg.get("refs") or []
+    note = (refs[0].get("note") or "").strip() if refs else ""
+    ref_txt = "<Picture 1>\uff08\u76ee\u6807\u89c6\u9891 0.00 \u79d2\u7684\u9996\u5e27\uff09" + (f" \u00b7 \u53c2\u8003\uff1a{note}" if note else "")
+    user = (
+        f"# \u6545\u4e8b\u5927\u7eb2\n{cfg.get('story')}\n\n"
+        f"# \u9996\u5e27\u53c2\u8003\u56fe\n{ref_txt}\n\n"
+        f"# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\uff08{tag}\uff09\n{json.dumps(script, ensure_ascii=False)}\n\n"
+        f"# \u89c6\u9891\u65f6\u957f\n{dur:g} \u79d2\n\n"
+        "\u8bf7\u6309 system \u89c4\u5219\uff0c\u76f4\u63a5\u5199\u6210\u6700\u7ec8 I2VA \u4e2d\u6587\u63d0\u793a\u8bcd\uff08\u9996\u5e27\u58f0\u660e + \u4e09\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff09\uff0c\u53ea\u8f93\u51fa\u63d0\u793a\u8bcd\u6b63\u6587\u3002"
+    )
+    prompt = llm.chat(ra.system_i2va(dur), user, max_tokens=32000).strip()
+    _stage_end("\u5199\u63d0\u793a\u8bcd")
+    print(f"  \u251c\u2500 I2VA {tag}\uff08{len(prompt)} \u5b57\u7b26\uff09")
+    return prompt
+
+
+def _compose(llm, cfg, script, tag):
+    """\u6309\u6d41\u7a0b\u9009\u62e9\u6210\u7a3f\u65b9\u5f0f\uff1aref2va = \u8f6c\u8bd1\u516d\u6bb5\u82f1\u6587\uff1bi2va = \u4e2d\u6587 I2VA \u76f4\u51fa\uff08\u514d\u8f6c\u8bd1\uff09\u3002"""
+    if _flow(cfg) == "i2va":
+        return _compose_i2va(llm, cfg, script, tag)
+    return _translate(llm, cfg, script, tag)
+
+
 def gen_fresh(llm, story, cfg, index, prev_weak=None):
     """\u751f\u6210\u4e00\u4e2a\u5168\u65b0\u7684\u5b8c\u6574\u5267\u672c\uff08\u6574\u7248\u91cd\u5199\uff09\u3002
     prev_weak\uff1a\u6b64\u524d\u672a\u8fc7\u51c6\u5165\u7ebf\u7684\u7248\u672c\u8584\u5f31\u70b9\uff0c\u7528\u6765\u8ba9\u65b0\u7248\u907f\u5f00\u540c\u6837\u95ee\u9898\u3002"""
@@ -470,12 +525,12 @@ def gen_fresh(llm, story, cfg, index, prev_weak=None):
         "\u671d\u6574\u4f53\u4f18\u5316\u76ee\u6807\u505a\u6574\u4f53\u4f18\u5316\u3001\u4e0d\u62c6\u5206\u76ee\u6807\uff1b\u7528\u8db3\u591f\u7cbe\u786e\u7684\u8c03\u5ea6/\u52a8\u4f5c/\u58f0\u97f3/\u8d1f\u5411\u7ea6\u675f\u63cf\u5199\u6765\u843d\u5b9e\u76ee\u6807\u3002"
     )
     script_img = _load_script_img(llm, cfg)
-    img_hint = _IMG_HINT if script_img else ""
+    img_hint = _img_hint(cfg, script_img)
     script = _gen_script_json(llm, ra.system_director(dur), dir_prompt + img_hint, script_img)
     print(f"\n  \u250c\u2500 \u5168\u65b0\u5267\u672c[{index}]")
     for _l in script_to_text(script).splitlines():
         print(f"  \u2502  {_l}")
-    prompt = _translate(llm, cfg, script, f"\u51c6\u5165-\u5168\u65b0{index}")
+    prompt = _compose(llm, cfg, script, f"\u51c6\u5165-\u5168\u65b0{index}")
     print("  \u2514\u2500 \u751f\u6210\u5b8c\u6bd5\uff0c\u5f00\u59cb\u6e32\u67d3\u2026")
     return {"kind": "admission_rewrite", "script": script, "prompt": prompt, "focus": "\u6574\u7248\u91cd\u5199"}
 
@@ -536,7 +591,7 @@ def gen_child(llm, story, champion, cfg, suggestion):
     gaps_txt = "\n".join(f"- {g}" for g in gaps) or "(\u65e0)"
     ref_txt, aud_txt = _fmt_refs(cfg)
     script_img = _load_script_img(llm, cfg)
-    img_hint = _IMG_HINT if script_img else ""
+    img_hint = _img_hint(cfg, script_img)
     director_user = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n"
         f"# \u4f18\u5316\u76ee\u6807\n{target}\n\n"
@@ -553,7 +608,7 @@ def gen_child(llm, story, champion, cfg, suggestion):
     print(f"\n  \u250c\u2500 \u5b50\u53d8\u4f53\u5267\u672c\uff08\u5efa\u8bae: {suggestion[:60]}\uff09")
     for _l in script_to_text(new_script).splitlines():
         print(f"  \u2502  {_l}")
-    prompt = _translate(llm, cfg, new_script, "\u722c\u5c71-\u5b50\u53d8\u4f53")
+    prompt = _compose(llm, cfg, new_script, "\u722c\u5c71-\u5b50\u53d8\u4f53")
     print("  \u2514\u2500 \u751f\u6210\u5b8c\u6bd5\uff0c\u5f00\u59cb\u6e32\u67d3\u2026")
     return {"kind": "hill_child", "script": new_script, "prompt": prompt,
             "focus": suggestion, "suggestion": suggestion}
@@ -606,7 +661,11 @@ def run_optimizer(cfg, llm):
     os.makedirs(outdir, exist_ok=True)
     seed = int(cfg["seed"]) if cfg.get("seed") is not None else random.randint(0, 2**31 - 1)
     story = cfg["story"]
-    video_edit = bool(cfg.get("video_edit"))
+    i2v = _flow(cfg) == "i2va"
+    video_edit = bool(cfg.get("video_edit")) and not i2v
+    if i2v:
+        cfg["video_edit"] = False        # I2VA \u53ea\u5403\u9996\u5e27\u56fe\uff0c\u6ca1\u6709 B \u65b9\u5f0f\uff08\u89c6\u9891\u7f16\u8f91\uff09\u6f14\u5316
+        cfg["video_ref"] = None
     if video_edit:
         cfg["video_ref"] = None   # \u51c6\u5165\u9996\u6b65\u65e0\u4e0a\u4e00\u6b65\u89c6\u9891\uff0c\u4e0d\u6ce8\u5165\uff1b\u722c\u5c71/\u7cbe\u6e32\u9636\u6bb5\u518d\u5e26\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u89c6\u9891
 
@@ -617,11 +676,16 @@ def run_optimizer(cfg, llm):
     manual = (cfg.get("stop_mode") or "auto") == "manual"
 
     print("=" * 60)
-    print("Ref2VA \u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71 \u00b7 \u51c6\u5165\u2192\u6f14\u8fdb\uff09")
+    print("\u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71 \u00b7 \u51c6\u5165\u2192\u6f14\u8fdb\uff09")
+    print(f"\u6d41\u7a0b     : {'I2VA \u00b7 \u9996\u5e27\u56fe\u751f\u89c6\u9891\uff08\u514d\u8f6c\u8bd1\uff0c\u4e2d\u6587\u63d0\u793a\u8bcd\u76f4\u51fa\uff09' if i2v else 'Ref2VA \u00b7 \u53c2\u8003\u56fe/\u89c6\u9891\uff08\u516d\u6bb5\u82f1\u6587\uff09'}")
     print(f"\u670d\u52a1\u5668   : {ra.get_comfy_url()}")
     print(f"\u5199\u5165/\u8bc4\u5206 LLM: {getattr(llm, 'base', '?')}  /  {getattr(llm, 'model', '?')}")
-    print(f"\u53c2\u8003\u65b9\u5f0f : {'B \u00b7 \u89c6\u9891\u7f16\u8f91\uff08\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u89c6\u9891\uff09' if cfg.get('video_edit') else 'A \u00b7 \u4ec5\u53c2\u8003\u56fe/\u6587\u5b57'}")
-    print(f"\u53c2\u8003\u56fe   : {len(cfg['_ref_names'])} \u5f20 | \u97f3\u9891: {len(cfg['_aud_names'])} \u6761")
+    if i2v:
+        print("\u53c2\u8003\u65b9\u5f0f : \u9996\u5e27\u53c2\u8003\u56fe\uff08\u5f3a\u5236\u4f5c\u4e3a\u89c6\u9891\u7b2c\u4e00\u5e27\uff09| \u65e0\u5feb\u901f\u6e32\u67d3\u6a21\u5f0f | \u4e0d\u5403\u53c2\u8003\u97f3\u9891")
+        print(f"\u53c2\u8003\u56fe   : {len(cfg['_ref_names'][:1])} \u5f20\uff08\u4ec5\u53d6\u7b2c 1 \u5f20\u4f5c\u9996\u5e27\uff09")
+    else:
+        print(f"\u53c2\u8003\u65b9\u5f0f : {'B \u00b7 \u89c6\u9891\u7f16\u8f91\uff08\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u89c6\u9891\uff09' if cfg.get('video_edit') else 'A \u00b7 \u4ec5\u53c2\u8003\u56fe/\u6587\u5b57'}")
+        print(f"\u53c2\u8003\u56fe   : {len(cfg['_ref_names'])} \u5f20 | \u97f3\u9891: {len(cfg['_aud_names'])} \u6761")
     print(f"\u89c6\u9891     : {cfg.get('megapixels')}MP {normalize_aspect(cfg.get('aspect'))} {cfg.get('duration')}s")
     print(f"\u79cd\u5b50     : {seed}\uff08\u5168\u7a0b\u6052\u5b9a\uff09| \u51c6\u5165\u7ebf\u2265{admission} | \u8fed\u4ee3\u4e0a\u9650 {max_iter} | \u540c\u57fa\u7ebf\u8010\u5fc3 {base_patience}")
     print("=" * 60)
@@ -874,6 +938,7 @@ def load_config(path):
     c.setdefault("aspect", "4:3 (Standard)")
     c.setdefault("duration", 10)
     c.setdefault("video_edit", False)          # B \u65b9\u5f0f\uff1a\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u89c6\u9891\u4f5c\u5019\u9009\u53c2\u8003
+    c.setdefault("flow", "ref2va")             # \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff09| i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u514d\u8f6c\u8bd1\uff09
     c.setdefault("optimize_target", None)
     c.setdefault("admission_threshold", 5)
     c.setdefault("max_iterations", 12)
@@ -906,6 +971,16 @@ def load_config(path):
     # \u89e3\u6790\u53c2\u8003\u6587\u4ef6 \u2192 input \u76ee\u5f55\u53ef\u7528\u540d
     c["_ref_names"] = ra.sync_ref_files([r["path"] for r in c["refs"]])
     c["_aud_names"] = ra.sync_ref_files([a["path"] for a in c["audios"]]) if c["audios"] else []
+    # ---- I2VA\uff1a\u5fc5\u987b\u4e14\u53ea\u53d6 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff1b\u65e0\u5feb\u901f\u6a21\u5f0f\u3001\u4e0d\u5403\u53c2\u8003\u97f3\u9891 ----
+    if (c.get("flow") or "ref2va").strip().lower() == "i2va":
+        if not c["refs"]:
+            raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] I2VA \u6d41\u7a0b\u5fc5\u987b\u63d0\u4f9b 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\u3002")
+        c["refs"] = c["refs"][:1]
+        c["_ref_names"] = c["_ref_names"][:1]
+        c["audios"] = []
+        c["_aud_names"] = []
+        c["video_edit"] = False
+        c["quick_workflow"] = False
     return c
 
 

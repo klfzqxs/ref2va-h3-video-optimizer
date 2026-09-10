@@ -59,18 +59,25 @@
 
   <h2>参考素材（每个都注明“参考什么”；可全部留空=T2VA）</h2>
   <div class="checks" style="margin-bottom:6px">
+    <label>流程：</label>
+    <label><input type="radio" name="flow" value="ref2va" checked onchange="applyFlowUI()"> Ref2VA · 参考图/视频 → 视频（六段英文提示词）</label>
+    <label><input type="radio" name="flow" value="i2va" onchange="applyFlowUI()"> I2VA · 首帧图生视频（1 张图作首帧，中文提示词直出、免转译）</label>
+  </div>
+  <div class="checks" style="margin-bottom:6px" id="modeSection">
     <label>参考模式：</label>
     <label><input type="radio" name="mode" value="A" checked> 模式A（省显存、效果略差）</label>
     <label><input type="radio" name="mode" value="B"> 模式B（显存消耗大、效果最佳）</label>
   </div>
 
-  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">参考图像（可多组）</h4>
+  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)" id="refTitle">参考图像（可多组）</h4>
   <div id="refrows"></div>
-  <div class="row"><button class="ghost small" onclick="addRow('refrows','ref')">＋ 添加参考图</button>（支持 jpg/png；不添加即为纯文字 T2VA）</div>
+  <div class="row"><button class="ghost small" onclick="addRow('refrows','ref')">＋ 添加参考图</button><span id="refHint">（支持 jpg/png；不添加即为纯文字 T2VA）</span></div>
 
-  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">参考音频（可选，默认关闭评审；wav/mp3）</h4>
-  <div id="audrows"></div>
-  <div class="row"><button class="ghost small" onclick="addRow('audrows','audio')">＋ 添加参考音频</button></div>
+  <div id="audioSection">
+    <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">参考音频（可选，默认关闭评审；wav/mp3）</h4>
+    <div id="audrows"></div>
+    <div class="row"><button class="ghost small" onclick="addRow('audrows','audio')">＋ 添加参考音频</button></div>
+  </div>
 
   <h2>模型 / 采样参数</h2>
   <div class="grid"><div class="field"><label>ComfyUI 地址</label><input id="comfy_url" value="http://127.0.0.1:8000"></div></div>
@@ -95,7 +102,7 @@
   <div class="row"><button class="ghost small" onclick="addLoraRow()">＋ 添加 LoRA</button><span class="hint">选 LoRA 模型名 + 强度(0~2)；留空=不加</span></div>
   <datalist id="loraList"></datalist>
   <div class="checks">
-    <label><input id="quick" type="checkbox"> 快速工作流（turbo 8 步，需 turbo LoRA；若本机未装会自动回退标准工作流）</label>
+    <label id="quickWrap"><input id="quick" type="checkbox"> 快速工作流（turbo 8 步，需 turbo LoRA；若本机未装会自动回退标准工作流）</label>
     <label><input id="fine" type="checkbox" checked> 结束精渲（全质量）</label>
   </div>
 
@@ -141,8 +148,29 @@
 const $=id=>document.getElementById(id);
 let pollTimer=null, currentJob=null;
 
+function currentFlow(){ const r=document.querySelector('input[name=flow]:checked'); return r?r.value:'ref2va'; }
+function isI2V(){ return currentFlow()==='i2va'; }
+function applyFlowUI(){
+  const i2v=isI2V();
+  $('modeSection').style.display=i2v?'none':'';
+  $('audioSection').style.display=i2v?'none':'';
+  $('quickWrap').style.display=i2v?'none':'';
+  $('refTitle').textContent=i2v?'参考图像（I2VA：仅 1 张，强制作为视频第一帧）':'参考图像（可多组）';
+  $('refHint').textContent=i2v?'（只能 1 张 jpg/png，将强制作为视频第一帧）':'（支持 jpg/png；不添加即为纯文字 T2VA）';
+  if(i2v){
+    $('quick').checked=false;                       // I2VA 不设快速渲染模式
+    const rows=[...document.querySelectorAll('#refrows .refrow')];
+    rows.slice(1).forEach(r=>r.remove());           // 只保留第 1 张作首帧
+    if(!rows.length) addRow('refrows','ref');
+  }
+  saveForm();
+}
 function addRow(containerId, kind){
   const c=$(containerId);
+  if(containerId==='refrows' && kind==='ref' && isI2V() && c.querySelectorAll('.refrow').length>=1){
+    $('status').textContent='I2VA 流程只能选 1 张参考图（强制作为视频首帧）';
+    return;
+  }
   const d=document.createElement('div'); d.className='refrow';
   d.innerHTML=`<input type="file" class="file" ${kind==='audio'?'accept="audio/*"':'accept="image/*"'}><input class="note" placeholder="这张${kind==='audio'?'音频':'图'}参考什么（如：${kind==='audio'?'流水声/鸟鸣/风声':'山峰/森林/瀑布/天空/光影'}）"><button class="ghost small" onclick="this.parentElement.remove()">删除</button>`;
   c.appendChild(d);
@@ -197,9 +225,12 @@ async function loadLLMModels(){
   }catch(e){ h.textContent='读取失败：'+e.message; }
 }
 async function run(){
+  const i2v=isI2V();
+  const refItems=collectRows('refrows');
+  if(i2v && !refItems.length){ $('status').textContent='I2VA 流程必须选 1 张参考图作为视频首帧'; return; }
   const files=[];
-  for(const it of collectRows('refrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
-  for(const it of collectRows('audrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
+  for(const it of (i2v?refItems.slice(0,1):refItems)) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
+  if(!i2v) for(const it of collectRows('audrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
   if(!$('llm_base').value || !$('llm_model').value){
     $('status').textContent='请填 LLM 地址与模型 id'; return;
   }
@@ -209,12 +240,13 @@ async function run(){
     loras:collectLoras(),
     sampler:$('sampler').value, scheduler:$('scheduler').value, steps:+($('steps').value||20),
     seed:$('seed').value? +$('seed').value : null, megapixels:+($('megapixels').value||0.6),
-    aspect:$('aspect').value, video_edit:(document.querySelector('input[name=mode]:checked').value==='B'),
+    aspect:$('aspect').value, video_edit:(!i2v && document.querySelector('input[name=mode]:checked').value==='B'),
+    flow:currentFlow(),
     llm_base:$('llm_base').value, llm_model:$('llm_model').value, llm_api_key:$('llm_api_key').value||null,
     audio_llm_base:$('audio_base').value||null, audio_llm_model:$('audio_model').value||null,
     audio_llm_api_key:$('audio_key').value||null,
     audio_scoring:$('audio_on').checked? 'on':'off',
-    comfy_url:$('comfy_url').value, quick_workflow:$('quick').checked, fine_render:$('fine').checked,
+    comfy_url:$('comfy_url').value, quick_workflow:(!i2v && $('quick').checked), fine_render:$('fine').checked,
     admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
     base_patience:+($('patience').value||3), files
   };
@@ -282,6 +314,7 @@ function saveForm(){
     const o={}; FORM_IDS.forEach(id=>{o[id]=$(id)?$(id).value:'';});
     o.quick=$('quick').checked; o.fine=$('fine').checked; o.audio_on=$('audio_on').checked;
     const m=document.querySelector('input[name=mode]:checked'); o.mode=m?m.value:'A';
+    const fl=document.querySelector('input[name=flow]:checked'); o.flow=fl?fl.value:'ref2va';
     o.refNotes=[...document.querySelectorAll('#refrows .refrow')].map(r=>r.querySelector('.note').value);
     o.audioNotes=[...document.querySelectorAll('#audrows .refrow')].map(r=>r.querySelector('.note').value);
     o.loras=collectLoras();
@@ -296,6 +329,7 @@ function restoreForm(){
     if(o.fine!=null)$('fine').checked=!!o.fine;
     if(o.audio_on!=null)$('audio_on').checked=!!o.audio_on;
     if(o.mode){const r=document.querySelector('input[name=mode][value="'+o.mode+'"]'); if(r)r.checked=true;}
+    if(o.flow){const r=document.querySelector('input[name=flow][value="'+o.flow+'"]'); if(r)r.checked=true;}
     const mk=(cont,notes)=>{ $(cont).innerHTML=''; (notes||[]).forEach(n=>{ addRow(cont, cont==='refrows'?'ref':'audio'); const nr=$(cont).lastElementChild; nr.querySelector('.note').value=n; }); if(!$(cont).children.length) addRow(cont, cont==='refrows'?'ref':'audio'); };
     mk('refrows', o.refNotes); mk('audrows', o.audioNotes);
     if(o.loras&&o.loras.length){ $('lorarows').innerHTML=''; o.loras.forEach(l=>addLoraRow(l.name,l.strength)); }
@@ -306,6 +340,7 @@ function restoreForm(){
   }
   if(!$('refrows').children.length) addRow('refrows','ref');
   if(!$('audrows').children.length) addRow('audrows','audio');
+  applyFlowUI();
 }
 function bindSave(){ document.addEventListener('input', debounce(saveForm,400)); document.addEventListener('change', debounce(saveForm,400)); }
 const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
@@ -316,6 +351,7 @@ function applyForm(f){
   if(f.fine_render!=null) $('fine').checked=!!f.fine_render;
   if(f.audio_scoring!=null) $('audio_on').checked=(f.audio_scoring==='on');
   if(f.video_edit!=null){ const r=document.querySelector('input[name=mode][value="'+(f.video_edit?'B':'A')+'"]'); if(r) r.checked=true; }
+  if(f.flow){ const r=document.querySelector('input[name=flow][value="'+f.flow+'"]'); if(r) r.checked=true; }
   const files=f.files||[];
   const isAud=n=>/\.(wav|mp3|m4a|flac|ogg)$/i.test(n||'');
   const imgs=files.filter(x=>!isAud(x.name)), auds=files.filter(x=>isAud(x.name));
@@ -325,6 +361,7 @@ function applyForm(f){
   if(!$('audrows').children.length) addRow('audrows','audio');
   if(f.loras&&f.loras.length){ $('lorarows').innerHTML=''; f.loras.forEach(l=>addLoraRow(l.name,l.strength)); }
   if(!$('lorarows').children.length) addLoraRow();
+  applyFlowUI();
 }
 $('run').onclick=run; loadJobs(); restoreForm(); bindSave();
 $('logauto').onchange=function(){ if(this.checked){ maybeStartPoll(); } else { stopPoll(); } };
