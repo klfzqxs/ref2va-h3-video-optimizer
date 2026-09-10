@@ -104,7 +104,8 @@ ref2va-h3-video-optimizer-1.0/
 - **B 方式**：显存占用更高，依赖本机 ComfyUI 在线。
 - **I2VA 提示「必须提供 1 张参考图」**：I2VA 流程必须上传 1 张图，它会**强制作为视频第一帧**（多余参考图会被忽略）。
 - **I2VA 下「模式 A/B」「参考音频」「快速工作流」不见了**：属正常——I2V 工作流本身即 turbo，且只吃首帧图、不吃参考音频。
-- **I2VA 渲染报节点缺失**：需 ComfyUI 装有 `MiniMaxH3ImageToVideo` / `MiniMaxH3SigmaShift` / `ResolutionSelector` / `ComfyMathExpression` 等节点，以及 I2V 用的 UNET/VAE/CLIP 与 `minimax-h3_fl2v_8Step_motion_enhancer.safetensors`（LoRA 名会自动规范化）。
+- **I2VA 渲染报节点缺失**：需 ComfyUI 装有 `MiniMaxH3ImageToVideo` / `MiniMaxH3SigmaShift` / `ResolutionSelector` / `ComfyMathExpression` 等节点，以及 I2V 用的 UNET/VAE/CLIP。
+- **I2VA 的速度/加速 LoRA**：I2V 工作流**不含任何内置 LoRA**，需要加速（如 lightx2v / motion enhancer 类）时，在页面「LoRA」区自行添加（可用「读取 ComfyUI 模型列表」列出）。
 
 ## 许可
 

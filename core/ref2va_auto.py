@@ -45,7 +45,7 @@ def _strip_placeholder_refs(graph, ref_node):
 def _apply_lora(graph, cfg, unet_id="127"):
     """\u5728 UNET \u4e4b\u540e\u6309\u987a\u5e8f\u4e32\u8054\u82e5\u5e72 LoraLoaderModelOnly\uff08\u652f\u6301\u591a\u4e2a LoRA\u3001\u5404\u81ea\u5f3a\u5ea6\uff09\uff0c
     \u5e76\u628a\u539f\u76f4\u63a5\u5403\u8be5 UNET \u6a21\u578b\u7684\u4e0b\u6e38\u8282\u70b9\u6539\u63a5\u5230\u6700\u540e\u4e00\u4e2a LoRA \u8f93\u51fa\u3002
-    unet_id\uff1aref2va \u5de5\u4f5c\u6d41\u4e3a "127"\uff1bI2V \u5de5\u4f5c\u6d41\u4e3a "105:6"\uff08\u5176\u540e\u4ecd\u6709\u5185\u7f6e turbo LoRA\uff0c\u4f1a\u4e32\u5728\u7528\u6237 LoRA \u4e4b\u540e\uff09\u3002"""
+    unet_id\uff1aref2va \u5de5\u4f5c\u6d41\u4e3a "127"\uff1bI2V \u5de5\u4f5c\u6d41\u4e3a "105:6"\u3002"""
     if unet_id not in graph:
         return
     lores = [l for l in (cfg.get("loras") or []) if (l.get("name") or "").strip()]
@@ -638,7 +638,7 @@ def make_graph_i2v(cfg):
       ref_images  : [str] \u53ea\u53d6\u7b2c 1 \u5f20\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff08\u5f3a\u5236\uff0c\u591a\u4f59\u5ffd\u7565\uff09
       model/clip  : str   \u53ef\u8986\u76d6\u6a21\u677f\u9ed8\u8ba4\uff08UNET / CLIP\uff09
       weight_dtype: str   \u9ed8\u8ba4 default
-      loras       : []    \u7528\u6237 LoRA\uff08\u4e32\u5728\u5185\u7f6e turbo LoRA \u4e4b\u524d\uff09
+      loras       : []    \u7528\u6237 LoRA\uff08\u4e24\u6761\u6d41\u7a0b\u7684 LoRA \u90fd\u53ea\u5728\u8fd9\u91cc\u52a0\u8f7d\uff0c\u5de5\u4f5c\u6d41\u5185\u4e0d\u542b\u4efb\u4f55\u5185\u7f6e LoRA\uff09
       seed / duration_s / megapixels / aspect_ratio
       sampler / scheduler / steps / denoise\uff1a\u4e0e\u6807\u51c6\u5de5\u4f5c\u6d41\u4e00\u81f4\uff0c\u8bfb\u53d6\u524d\u7aef\u8bbe\u7f6e
     \u6ce8\u610f\uff1a\u8be5\u5de5\u4f5c\u6d41\u4e0d\u5403\u53c2\u8003\u97f3\u9891\uff0c\u6545\u5ffd\u7565 ref_audios\u3002
@@ -662,7 +662,7 @@ def make_graph_i2v(cfg):
     if cfg.get("clip") and "105:13" in graph:
         graph["105:13"]["inputs"]["clip_name"] = cfg["clip"]
 
-    # --- \u7528\u6237 LoRA\uff08\u4e32\u5728 UNET \u4e4b\u540e\u3001\u5185\u7f6e turbo LoRA \u4e4b\u524d\uff09 ---
+    # --- \u7528\u6237 LoRA\uff08\u4e32\u5728 UNET \u4e4b\u540e\uff1b\u5de5\u4f5c\u6d41\u5185\u4e0d\u542b\u5185\u7f6e LoRA\uff09---
     _apply_lora(graph, cfg, unet_id=I2V_UNET)
 
     # --- \u91c7\u6837\u5668 / \u8c03\u5ea6\u5668 / \u6b65\u6570\uff08\u8bfb\u53d6\u524d\u7aef\u8bbe\u7f6e\uff0c\u4e0e\u6807\u51c6\u5de5\u4f5c\u6d41\u4e00\u81f4\uff09---
