@@ -202,13 +202,33 @@
       ]
     }
   },
+  "148": {
+    "class_type": "PathchSageAttentionKJ",
+    "inputs": {
+      "model": [
+        "105:6",
+        0
+      ],
+      "sage_attention": "sageattn3",
+      "allow_compile": true
+    }
+  },
+  "149": {
+    "class_type": "MiniMaxH3MemoryEfficientSageAttentionPatch",
+    "inputs": {
+      "model": [
+        "148",
+        0
+      ]
+    }
+  },
   "105:123": {
     "class_type": "MiniMaxH3SigmaShift",
     "inputs": {
       "shift_video": 12,
       "shift_audio": 3,
       "model": [
-        "105:6",
+        "149",
         0
       ]
     }
