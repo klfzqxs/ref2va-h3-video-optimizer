@@ -460,16 +460,24 @@ def _fmt_refs(cfg):
 
 
 def _translate(llm, cfg, script, tag):
-    """\u628a\u5355\u4e2a\u5267\u672c\u8f6c\u8bd1\u4e3a\u5b8c\u6574\u516d\u6bb5 ref2va prompt \u7eaf\u6587\u672c\u3002"""
+    """\u628a\u5355\u4e2a\u5267\u672c\u8f6c\u8bd1\u4e3a\u5b8c\u6574\u516d\u6bb5 ref2va prompt \u7eaf\u6587\u672c\u3002
+
+    **prompt \u524d\u7f00\u7a33\u5b9a\u6027**\uff1a\u5b98\u65b9\u6307\u5357\uff08\u7ea6 6k token\uff09\u653e\u8fdb system prompt\uff0c\u53d8\u5316\u7684\u5267\u672c JSON
+    \u653e\u5230 user \u6d88\u606f\u6700\u540e\u3002\u8fd9\u6837\u540c\u4e00\u8f6e\u4f18\u5316\u91cc\u7684\u591a\u6b21\u8c03\u7528\u5171\u4eab\u540c\u4e00\u524d\u7f00\uff0c\u670d\u52a1\u7aef\uff08llama.cpp \u7b49\uff09
+    \u7684 KV cache \u524d\u7f00\u590d\u7528\u53ef\u4ee5\u76f4\u63a5\u8df3\u8fc7\u6574\u4efd\u6307\u5357\u7684 prefill\u3002"""
     _stage("\u8f6c\u8bd1")
     guide = ra._read_guide()
     ref_txt, aud_txt = _fmt_refs(cfg)
+    formatter_system = (
+        ra.SYSTEM_FORMATTER
+        + "\n\n# MiniMax \u5b98\u65b9\u5199\u4f5c\u6307\u5357\uff08\u9644\u5f55\uff0c\u5fc5\u987b\u4e25\u683c\u9075\u5b88\uff09\n" + guide
+    )
     formatter_user = (
+        f"# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n"
         f"# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\uff08{tag}\uff09\n{json.dumps(script, ensure_ascii=False)}\n\n"
-        f"# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n# MiniMax \u5b98\u65b9\u6307\u5357\n{guide}\n\n"
         "\u8bf7\u8f6c\u5199\u4e3a\u5b8c\u6574\u516d\u6bb5 ref2va prompt \u7eaf\u6587\u672c\u3002"
     )
-    prompt = llm.chat(ra.SYSTEM_FORMATTER, formatter_user, max_tokens=32000)
+    prompt = llm.chat(formatter_system, formatter_user, max_tokens=32000)
     _stage_end("\u8f6c\u8bd1")
     print(f"  \u251c\u2500 Ref2VA {tag}\uff08{len(prompt)} \u5b57\u7b26\uff09")
     return prompt
@@ -486,8 +494,8 @@ def _compose_i2va(llm, cfg, script, tag):
     user = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{cfg.get('story')}\n\n"
         f"# \u9996\u5e27\u53c2\u8003\u56fe\n{ref_txt}\n\n"
-        f"# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\uff08{tag}\uff09\n{json.dumps(script, ensure_ascii=False)}\n\n"
         f"# \u89c6\u9891\u65f6\u957f\n{dur:g} \u79d2\n\n"
+        f"# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\uff08{tag}\uff09\n{json.dumps(script, ensure_ascii=False)}\n\n"
         "\u8bf7\u6309 system \u89c4\u5219\uff0c\u76f4\u63a5\u5199\u6210\u6700\u7ec8 I2VA \u4e2d\u6587\u63d0\u793a\u8bcd\uff08\u9996\u5e27\u58f0\u660e + \u4e09\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff09\uff0c\u53ea\u8f93\u51fa\u63d0\u793a\u8bcd\u6b63\u6587\u3002"
     )
     prompt = llm.chat(ra.system_i2va(dur), user, max_tokens=32000).strip()
