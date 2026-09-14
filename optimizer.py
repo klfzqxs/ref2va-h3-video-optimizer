@@ -8,6 +8,7 @@ Ref2VA \u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71\uff09\
 """
 import argparse
 import json
+import math
 import os
 import random
 import subprocess
@@ -52,8 +53,6 @@ def ask(prompt, default=None):
 
 
 # ============================================================ \u5de5\u5177
-QUICK_TURBO_LORA = "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors"
-
 _T_T = {}
 def _ts():
     return time.strftime("%H:%M:%S")
@@ -70,13 +69,7 @@ def _stage_end(name):
     print(f"[{_ts()}] \u25c2 \u9636\u6bb5\u7ed3\u675f \u00b7 {name}\uff08\u8017\u65f6 {time.time()-t0:.1f}s\uff09")
 
 
-def _quick_lora_available():
-    try:
-        lorAs = ra._remote_object_list("LoraLoaderModelOnly") or []
-        lorAs = [l.split("\\")[-1].split("/")[-1] for l in lorAs]
-        return QUICK_TURBO_LORA in lorAs
-    except Exception:
-        return False
+QUICK_FACTOR = 0.707     # \u5feb\u901f\u6e32\u67d3\uff1a\u5206\u8fa8\u7387(megapixels)\u4e0e\u91c7\u6837\u6b65\u6570\u5747\u4e58\u6b64\u7cfb\u6570
 
 
 def _flow(cfg):
@@ -84,9 +77,28 @@ def _flow(cfg):
     return (cfg.get("flow") or "ref2va").strip().lower()
 
 
+def _quick_scale(cfg, megapixels, steps):
+    """\u5feb\u901f\u6e32\u67d3\u6a21\u5f0f\uff08\u4e24\u6761\u6d41\u7a0b\u901a\u7528\uff09\uff1a
+    \u6a21\u578b / \u91c7\u6837\u5668 / \u65f6\u957f / \u753b\u5e45 / LoRA **\u5168\u90e8\u4e0e\u7cbe\u6e32\u76f8\u540c**\uff0c\u53ea\u628a\u4e24\u4ef6\u4e8b\u7f29\u4e0b\u6765\uff1a
+      \u00b7 \u5206\u8fa8\u7387 megapixels  \u00d7 0.707\uff08\u6309 ResolutionSelector \u7684 step=0.1 \u5411\u4e0b\u53d6\u6574\uff09
+      \u00b7 \u91c7\u6837\u6b65\u6570 steps      \u00d7 0.707\uff08\u5411\u4e0b\u53d6\u6574\u5230\u6574\u6570\uff0c\u4e0b\u9650 1\uff09
+    \u56e0\u4e3a 0.707 \u00d7 0.707 = 0.5\uff0c\u6e32\u67d3\u8017\u65f6\u7ea6\u4e3a\u7cbe\u6e32\u7684\u4e00\u534a\uff1b\u63d0\u793a\u8bcd\u9075\u4ece\u5ea6\u4e0b\u964d\u6709\u9650\u3002
+    \u4e0d\u505a\u4efb\u4f55\u5185\u7f6e LoRA \u6ce8\u5165\u2014\u2014\u8981\u52a0\u901f\u7531\u7528\u6237\u5728\u9875\u9762\u300cLoRA\u300d\u533a\u81ea\u884c\u52a0\u8f7d\u3002"""
+    if not cfg.get("quick_render"):
+        return megapixels, steps
+    mp = megapixels
+    if mp:
+        mp = math.floor(float(mp) * QUICK_FACTOR * 10.0) / 10.0
+        mp = max(mp, 0.1)
+    st = max(1, int(math.floor(int(steps) * QUICK_FACTOR)))
+    return mp, st
+
+
 def build_gcfg(cfg, prompt, seed):
     flow = _flow(cfg)
     i2v = flow == "i2va"
+    # \u5feb\u901f\u6e32\u67d3\uff1a\u4ec5\u7f29\u5206\u8fa8\u7387\u4e0e\u6b65\u6570\uff0c\u5176\u4f59\uff08\u6a21\u578b/\u91c7\u6837\u5668/\u65f6\u957f/\u753b\u5e45/LoRA\uff09\u4e0e\u7cbe\u6e32\u5b8c\u5168\u4e00\u81f4
+    mp, st = _quick_scale(cfg, cfg.get("megapixels"), cfg.get("steps", 20))
     return {
         "prompt": prompt,
         "flow": flow,
@@ -95,30 +107,25 @@ def build_gcfg(cfg, prompt, seed):
         "ref_audios": cfg["_aud_names"],
         "seed": seed,
         "duration_s": cfg.get("duration", 10),
-        "steps": cfg.get("steps", 20), "denoise": 1.0,
+        "steps": st, "denoise": 1.0,
         "model": cfg.get("model"), "clip": cfg.get("clip"), "weight_dtype": "default",
         "loras": cfg.get("loras") or [],
         "sampler": cfg.get("sampler"), "scheduler": cfg.get("scheduler"),
-        "megapixels": cfg.get("megapixels"),
+        "megapixels": mp,
         "aspect_ratio": normalize_aspect(cfg.get("aspect")),
-        # I2VA \u7684\u5de5\u4f5c\u6d41\u672c\u8eab\u5373 turbo\uff08lightx2v\uff09\uff0c\u4e0d\u8bbe\u5feb\u901f\u6e32\u67d3\u6a21\u5f0f
-        "_quick": False if i2v else bool(cfg.get("quick_workflow")),
         # I2VA \u53ea\u5403\u9996\u5e27\uff0c\u6ca1\u6709 B \u65b9\u5f0f\uff08\u89c6\u9891\u7f16\u8f91\uff09\u6f14\u5316
         "video_ref": None if i2v else cfg.get("video_ref"),
     }
 
 
 def render(gcfg, rundir):
-    _quick = gcfg.pop("_quick", False)
     _stage("\u6e32\u67d3")
     if (gcfg.get("flow") or "ref2va") == "i2va":
-        print("  \u23f3 I2VA \u9996\u5e27\u56fe\u751f\u89c6\u9891\uff08lightx2v turbo\uff09")
-        graph = ra.make_graph_i2v(gcfg)          # I2VA \u65e0\u5feb\u901f/\u7cbe\u6e32\u4e4b\u5206\uff0c\u56fa\u5b9a\u8d70 I2V \u5de5\u4f5c\u6d41
+        print(f"  \u23f3 I2VA \u9996\u5e27\u56fe\u751f\u89c6\u9891\uff08{gcfg.get('steps')} \u6b65 \u00b7 {gcfg.get('megapixels')}MP\uff09")
+        graph = ra.make_graph_i2v(gcfg)
     else:
-        if _quick and not _quick_lora_available():
-            print("    [warn] \u672a\u68c0\u6d4b\u5230 turbo LoRA\uff0c\u5feb\u901f\u5de5\u4f5c\u6d41\u56de\u9000\u4e3a\u6807\u51c6\u5de5\u4f5c\u6d41", file=sys.stderr)
-            _quick = False
-        graph = ra.make_graph_quick(gcfg) if _quick else ra.make_graph(gcfg)
+        print(f"  \u23f3 Ref2VA\uff08{gcfg.get('steps')} \u6b65 \u00b7 {gcfg.get('megapixels')}MP\uff09")
+        graph = ra.make_graph(gcfg)
     print(f"  \u23f3 ComfyUI \u6e32\u67d3\u4e2d\uff08{rundir}\uff09\uff0c\u6b64\u6b65\u901a\u5e38\u9700\u8981\u6570\u5206\u949f\uff0c\u8bf7\u8010\u5fc3\u7b49\u5f85\u2026")
     res = ra.submit_and_fetch(graph, rundir, timeout_s=7200)
     vids = ra.extract_videos(res)
@@ -867,7 +874,7 @@ def run_optimizer(cfg, llm):
     # ================= \u5c3e\u90e8\u7cbe\u7ec6\u5316\u6e32\u67d3\uff08\u5feb\u901f\u6a21\u5f0f\u53ef\u9009\u7528\u539f\u5de5\u4f5c\u6d41\u505a\u6700\u7ec8\u7cbe\u6e32\uff09 =================
     if champion is not None and cfg.get("fine_render"):
         fine_cfg = dict(cfg)
-        fine_cfg["quick_workflow"] = False
+        fine_cfg["quick_render"] = False        # \u7cbe\u6e32\u6052\u4e3a\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570
         if video_edit:
             fine_cfg["video_ref"] = _sync_video_ref(champion.get("video"))
         fine_gcfg = build_gcfg(fine_cfg, champion["prompt"], seed)
@@ -948,6 +955,8 @@ def load_config(path):
     c.setdefault("aspect", "4:3 (Standard)")
     c.setdefault("duration", 10)
     c.setdefault("video_edit", False)          # B \u65b9\u5f0f\uff1a\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u89c6\u9891\u4f5c\u5019\u9009\u53c2\u8003
+    c.setdefault("quick_render", False)        # \u5feb\u901f\u6e32\u67d3\uff1a\u4ec5\u5206\u8fa8\u7387\u4e0e\u6b65\u6570 \u00d70.707\uff08\u5176\u4f59\u540c\u7cbe\u6e32\uff09
+    c.setdefault("fine_render", True)          # \u7ed3\u675f\u7cbe\u6e32\uff1a\u722c\u5c71\u7ed3\u675f\u540e\u7528\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570\u518d\u6e32\u4e00\u6b21
     c.setdefault("flow", "ref2va")             # \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff09| i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u82f1\u6587\u63d0\u793a\u8bcd\uff09
     c.setdefault("optimize_target", None)
     c.setdefault("admission_threshold", 5)
@@ -981,7 +990,7 @@ def load_config(path):
     # \u89e3\u6790\u53c2\u8003\u6587\u4ef6 \u2192 input \u76ee\u5f55\u53ef\u7528\u540d
     c["_ref_names"] = ra.sync_ref_files([r["path"] for r in c["refs"]])
     c["_aud_names"] = ra.sync_ref_files([a["path"] for a in c["audios"]]) if c["audios"] else []
-    # ---- I2VA\uff1a\u5fc5\u987b\u4e14\u53ea\u53d6 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff1b\u65e0\u5feb\u901f\u6a21\u5f0f\u3001\u4e0d\u5403\u53c2\u8003\u97f3\u9891 ----
+    # ---- I2VA\uff1a\u5fc5\u987b\u4e14\u53ea\u53d6 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff1b\u4e0d\u5403\u53c2\u8003\u97f3\u9891\uff08\u5feb\u901f\u6e32\u67d3\u540c\u6837\u9002\u7528\uff09----
     if (c.get("flow") or "ref2va").strip().lower() == "i2va":
         if not c["refs"]:
             raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] I2VA \u6d41\u7a0b\u5fc5\u987b\u63d0\u4f9b 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\u3002")
@@ -990,7 +999,6 @@ def load_config(path):
         c["audios"] = []
         c["_aud_names"] = []
         c["video_edit"] = False
-        c["quick_workflow"] = False
     return c
 
 

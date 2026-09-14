@@ -102,7 +102,7 @@
   <div class="row"><button class="ghost small" onclick="addLoraRow()">＋ 添加 LoRA</button><span class="hint">选 LoRA 模型名 + 强度(0~2)；留空=不加</span></div>
   <datalist id="loraList"></datalist>
   <div class="checks">
-    <label id="quickWrap"><input id="quick" type="checkbox"> 快速工作流（turbo 8 步，需 turbo LoRA；若本机未装会自动回退标准工作流）</label>
+    <label id="quickWrap"><input id="quick" type="checkbox"> 快速渲染（分辨率与步数各 ×0.707，耗时约减半；模型/采样器/时长/画幅/LoRA 与精渲相同）</label>
     <label><input id="fine" type="checkbox" checked> 结束精渲（全质量）</label>
   </div>
 
@@ -154,11 +154,9 @@ function applyFlowUI(){
   const i2v=isI2V();
   $('modeSection').style.display=i2v?'none':'';
   $('audioSection').style.display=i2v?'none':'';
-  $('quickWrap').style.display=i2v?'none':'';
   $('refTitle').textContent=i2v?'参考图像（I2VA：仅 1 张，强制作为视频第一帧）':'参考图像（可多组）';
   $('refHint').textContent=i2v?'（只能 1 张 jpg/png，将强制作为视频第一帧）':'（支持 jpg/png；不添加即为纯文字 T2VA）';
   if(i2v){
-    $('quick').checked=false;                       // I2VA 不设快速渲染模式
     const rows=[...document.querySelectorAll('#refrows .refrow')];
     rows.slice(1).forEach(r=>r.remove());           // 只保留第 1 张作首帧
     if(!rows.length) addRow('refrows','ref');
@@ -246,7 +244,7 @@ async function run(){
     audio_llm_base:$('audio_base').value||null, audio_llm_model:$('audio_model').value||null,
     audio_llm_api_key:$('audio_key').value||null,
     audio_scoring:$('audio_on').checked? 'on':'off',
-    comfy_url:$('comfy_url').value, quick_workflow:(!i2v && $('quick').checked), fine_render:$('fine').checked,
+    comfy_url:$('comfy_url').value, quick_render:$('quick').checked, fine_render:$('fine').checked,
     admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
     base_patience:+($('patience').value||3), files
   };
@@ -347,7 +345,7 @@ const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'du
 function applyForm(f){
   if(!f) return;
   Object.entries(APPLY_MAP).forEach(([id,key])=>{ if($(id)&&f[key]!=null&&f[key]!=='') $(id).value=f[key]; });
-  if(f.quick_workflow!=null) $('quick').checked=!!f.quick_workflow;
+  if(f.quick_render!=null) $('quick').checked=!!f.quick_render;
   if(f.fine_render!=null) $('fine').checked=!!f.fine_render;
   if(f.audio_scoring!=null) $('audio_on').checked=(f.audio_scoring==='on');
   if(f.video_edit!=null){ const r=document.querySelector('input[name=mode][value="'+(f.video_edit?'B':'A')+'"]'); if(r) r.checked=true; }

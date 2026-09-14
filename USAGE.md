@@ -44,7 +44,7 @@ cd ref2va-h3-video-optimizer
   "aspect": "16:9 (Widescreen)",
   "duration": 10,
 
-  "quick_workflow": true,
+  "quick_render": true,
   "fine_render": true,
   "admission_threshold": 5,
   "max_iterations": 12,

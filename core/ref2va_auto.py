@@ -628,10 +628,7 @@ def make_graph(cfg):
     return graph
 
 
-# ============================================================ \u5feb\u901f\u6d4b\u8bd5\u5de5\u4f5c\u6d41\uff08turbo-LoRA 8\u6b65\uff09
-QUICK_WF = os.path.join(ROOT, "workflows", "quick_turbo_ref2va.api.json")
-
-# ============================================================ I2VA \u5de5\u4f5c\u6d41\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891 \u00b7 lightx2v turbo\uff09
+# ============================================================ I2VA \u5de5\u4f5c\u6d41\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff09
 I2V_WF = os.path.join(ROOT, "workflows", "video_minimax_h3_i2v.api.json")
 I2V_UNET = "105:6"          # UNETLoader
 I2V_LATENT = "105:104"      # MiniMaxH3ImageToVideo\uff08prompt / first_frame \u5728\u8fd9\u91cc\uff09
@@ -643,53 +640,10 @@ I2V_SAMPLER = "105:17"      # KSamplerSelect
 I2V_SCHED = "105:9"         # BasicScheduler\uff08scheduler / steps / denoise\uff09
 
 
-def make_graph_quick(cfg):
-    """\u7528\u5feb\u901f\u6d4b\u8bd5\u5de5\u4f5c\u6d41\uff08turbo-LoRA 8\u6b65\uff09\u6784\u5efa API \u56fe\u3002
-    \u53ea\u6ce8\u5165 prompt / \u53c2\u8003\u56fe / \u53c2\u8003\u89c6\u9891(\u53ef\u9009) / \u5206\u8fa8\u7387 / \u65f6\u957f / \u79cd\u5b50 / \u6a21\u578b / CLIP\u3002
-    cfg["video_ref"] = ComfyUI input \u5185\u7684\u53c2\u8003\u89c6\u9891\u6587\u4ef6\u540d\uff08\u89c6\u9891\u7f16\u8f91\u5f0f\u6f14\u5316\u7528\uff0c\u53ef\u9009\uff09\u3002
-    """
-    with open(QUICK_WF, encoding="utf-8") as f:
-        graph = json.load(f)
-    n = graph["162"]["inputs"]                     # MiniMaxH3ReferenceToVideo
-    n["prompt"] = cfg["prompt"]
-    _strip_placeholder_refs(graph, n)
-    refs = cfg.get("ref_images") or []
-    for i, name in enumerate(refs):
-        if not name or i >= MAX_REFS:
-            continue
-        lid = str(1000 + i)
-        graph[lid] = {"class_type": "LoadImage", "inputs": {"image": name}}
-        n[f"ref_images.ref_image_{i}"] = [lid, 0]
-    # --- \u53c2\u8003\u89c6\u9891\uff08\u89c6\u9891\u7f16\u8f91\u5f0f\u6f14\u5316\uff1b\u53ef\u9009\uff09 ---
-    # MiniMaxH3ReferenceToVideo.ref_videos \u671f\u671b IMAGE \u5e27(24fps)\uff0c\u6545\u7528 VHS_LoadVideo \u8f93\u51fa0(IMAGE)
-    video_ref = cfg.get("video_ref")
-    if video_ref:
-        graph["1300"] = {"class_type": "VHS_LoadVideo",
-                         "inputs": {"video": video_ref, "force_rate": 24, "frame_load_cap": 0,
-                                    "select_every_nth": 1, "skip_first_frames": 0,
-                                    "custom_width": 0, "custom_height": 0}}
-        n["ref_videos.ref_video_0"] = ["1300", 0]
-    # --- \u6a21\u578b / CLIP\uff08\u5141\u8bb8\u4ece\u914d\u7f6e\u8986\u76d6\uff1b\u7f3a\u7701\u4fdd\u7559\u6a21\u677f\u9ed8\u8ba4\uff09 ---
-    if cfg.get("model") and "127" in graph:
-        graph["127"]["inputs"]["unet_name"] = cfg["model"]
-    if cfg.get("clip") and "128" in graph:
-        graph["128"]["inputs"]["clip_name"] = cfg["clip"]
-    _apply_lora(graph, cfg)
-    if cfg.get("megapixels") is not None and "115" in graph:
-        graph["115"]["inputs"]["megapixels"] = float(cfg["megapixels"])
-    if cfg.get("aspect_ratio") and "115" in graph:
-        graph["115"]["inputs"]["aspect_ratio"] = cfg["aspect_ratio"]
-    if "133" in graph:
-        graph["133"]["inputs"]["value"] = float(cfg.get("duration_s", 15.0))
-    if "129" in graph:
-        graph["129"]["inputs"]["noise_seed"] = int(cfg.get("seed", 0))
-    return graph
-
-
 def make_graph_i2v(cfg):
-    """\u7528 I2VA\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891 \u00b7 lightx2v turbo\uff09\u5de5\u4f5c\u6d41\u6784\u5efa API \u56fe\u3002
+    """\u7528 I2VA\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff09\u5de5\u4f5c\u6d41\u6784\u5efa API \u56fe\u3002
     cfg \u76f8\u5173\u952e\uff1a
-      prompt      : str   I2VA \u4e2d\u6587\u81ea\u7136\u8bed\u8a00\u63d0\u793a\u8bcd\uff08\u9996\u5e27\u58f0\u660e + \u4e09\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff09
+      prompt      : str   I2VA \u82f1\u6587\u63d0\u793a\u8bcd\uff08\u9996\u5e27\u58f0\u660e + \u4e09\u4e2a\u6838\u5fc3\u5b57\u6bb5\uff09
       ref_images  : [str] \u53ea\u53d6\u7b2c 1 \u5f20\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\uff08\u5f3a\u5236\uff0c\u591a\u4f59\u5ffd\u7565\uff09
       model/clip  : str   \u53ef\u8986\u76d6\u6a21\u677f\u9ed8\u8ba4\uff08UNET / CLIP\uff09
       weight_dtype: str   \u9ed8\u8ba4 default
