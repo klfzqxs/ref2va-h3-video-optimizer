@@ -34,13 +34,13 @@
 - **任务排队 + 历史回看**：任务运行时可“任务排队”，串行依次执行；历史可按任务轮询日志并回填该任务预填信息。
 - **强制终止**：终止运行/排队任务，并**定向取消它提交到 ComfyUI 的作业**（不影响其它排队任务）。
 - **日志分阶段 + 时间戳 + 耗时**：写剧本/转译/渲染/评分每阶段打印 `[HH:MM:SS]` 与耗时；日志可**自动/手动**刷新。
-- **LoRA 加载器**：可加多条 LoRA、各设强度，精渲与快速模式都生效。
+- **LoRA 加载器**：可加多条 LoRA、各设强度；**两条流程、精渲与快速渲染都生效**（程序不内置任何 LoRA）。
 - **转译不限字数**：严格按剧本**逐拍详转写尽**，复杂剧本锚定更精确。
 
 ## 环境要求
 
 - **Python 3.10+**（工作台只用标准库，无需第三方 pip 依赖；用系统 Python 即可）。
-- **ComfyUI**：已装 MiniMax-H3 模型（UNET/CLIP/VAE）与所需自定义节点（`ComfyUI-MiniMax-H3-Turbo`、`ComfyUI-KJNodes`）。加速 LoRA **由你在页面「LoRA」区自行加载**（本项目不内置、不依赖任何特定 LoRA）：目前实测适配的是 `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors`（可选）；也可选用其它不需要额外 Custom Node 的 Turbo LoRA，并自行调整渲染参数。
+- **ComfyUI**：已装 MiniMax-H3 模型（UNET/CLIP/VAE）与所需自定义节点（`ComfyUI-MiniMax-H3-Turbo`、`ComfyUI-KJNodes`）。**本项目不内置、也不依赖任何特定 LoRA**：两条流程的工作流里都没有 LoRA 节点，加速 LoRA 一律由你在页面「LoRA」区自行加载，走的是 ComfyUI 自带的 `LoraLoaderModelOnly`，**不需要额外的 Custom Node、也不需要专用工作流**。加载后请把**采样步数设成与该 LoRA 匹配的值**（例如 8 步 turbo 类 LoRA 就把步数设为 8）——快速渲染只缩分辨率与步数，不会替你加载或识别 LoRA。目前实测过的例子是 `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_resized_avg_rank_64_bf16.safetensors`（可选，非必需）。
 - **一个 OpenAI 兼容的 LLM 端点**（能看图/多模态，用于写剧本与评分；也可用云端 API）。
 - **ffmpeg**：需位于 PATH 且名为 `ffmpeg.exe`（用于评分前抽帧/抽音频；缺失会明确报错并中止，而不是无限重写）。
 - 参考音频分析需另配**音频 LLM**（可选）。
