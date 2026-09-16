@@ -14,7 +14,7 @@
 直接克隆或整包拷贝，运行前无需任何安装：
 
 ```bash
-git clone https://github.com/<你>/ref2va-h3-video-optimizer.git
+git clone https://github.com/klfzqxs/ref2va-h3-video-optimizer.git
 cd ref2va-h3-video-optimizer
 ```
 

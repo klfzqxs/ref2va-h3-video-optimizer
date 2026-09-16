@@ -47,10 +47,18 @@
 
 ## 快速开始
 
-1. 解压到任意目录，双击 **`run.bat`**（自动选 Python、起服务、自动打开浏览器）。
+1. 克隆仓库（**本仓库不提供发布 zip 包**，请用 git）：
+
+   ```bash
+   git clone https://github.com/klfzqxs/ref2va-h3-video-optimizer.git
+   ```
+
+   - 没装 git 的话，在仓库页点 **`Code → Download ZIP`** 下载 GitHub 自动生成的源码包，解压到任意目录即可。
+   - 以后更新：在仓库目录里 `git pull`；想固定在发布版本：`git clone -b v1.1 https://github.com/klfzqxs/ref2va-h3-video-optimizer.git`。
+2. 双击仓库里的 **`run.bat`**（自动选 Python、起服务、自动打开浏览器）。
    - 本机访问 `http://127.0.0.1:8090/`；局域网 `http://<本机IP>:8090/`。
    - 若找不到 `python`，在 `run.bat` 顶部加 `set "PYTHON=C:\你的Python\python.exe"`。
-2. 页面上：
+3. 页面上：
    - 填 **ComfyUI 地址** → 点「读取 ComfyUI 模型列表」→ 选好 **模型/CLIP/LoRA/采样器/调度器**；
    - 填 **LLM 地址/模型/API Key** →（可选）点「读取 LLM 模型列表」；
    - 在参考图区上方选 **流程**：**Ref2VA** 支持多图/参考音频与 A/B 模式；**I2VA** 只需 1 张首帧图（A/B 与参考音频会自动隐藏）；
@@ -83,7 +91,7 @@
 ## 目录结构
 
 ```
-ref2va-h3-video-optimizer-1.1/
+ref2va-h3-video-optimizer/
 ├── run.bat          一键启动（自动开浏览器）
 ├── server.py        本地 Web 服务（纯标准库）
 ├── optimizer.py     顺序爬山优化主逻辑
