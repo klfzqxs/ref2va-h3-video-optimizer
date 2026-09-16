@@ -20,7 +20,7 @@ if not defined PORT set "PORT=8090"
 rem ============================
 
 echo ================================================
-echo   Ref2VA H3 v1.0
+echo   Ref2VA H3 v1.1
 echo   Local UI : http://127.0.0.1:%PORT%/
 echo   LAN      : http://your-ip:%PORT%/   (HOST=0.0.0.0)
 echo   Stop     : press Ctrl+C

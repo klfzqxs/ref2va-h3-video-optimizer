@@ -1,6 +1,6 @@
 # Ref2VA H3 视频提示词优化器（Web 控制台版）
 
-> 版本：**v1.0 正式版** · 协议：MIT · 联系：微博 @快乐肥宅庆先森
+> 版本：**v1.1 正式版** · 协议：MIT · 联系：微博 @快乐肥宅庆先森
 
 一个**本地 Web 界面驱动**的 MiniMax-H3 视频提示词迭代优化器，支持两条流程：
 
@@ -84,7 +84,7 @@
 ## 目录结构
 
 ```
-ref2va-h3-video-optimizer-1.0/
+ref2va-h3-video-optimizer-1.1/
 ├── run.bat          一键启动（自动开浏览器）
 ├── server.py        本地 Web 服务（纯标准库）
 ├── optimizer.py     顺序爬山优化主逻辑
