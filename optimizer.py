@@ -388,8 +388,8 @@ def _load_script_img(llm, cfg):
     return None
 
 
-_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a\u56fe1\uff08\u9996\u5e27/\u80cc\u666f\u73af\u5883/\u4e3b\u4f53\u521d\u59cb\u59ff\u6001/\u670d\u88c5/\u4f53\u6001\u53c2\u8003\uff09\u3002"
-             "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u89c6\u9891\u5f00\u5934\u7684\u573a\u666f\u3001\u4e3b\u4f53\u7684\u59ff\u6001\u3001\u670d\u88c5\u4e0e\u4f53\u6001\uff0c\u4f7f\u9996\u5e27\u4e0e\u56fe1\u5b8c\u5168\u4e00\u81f4\uff1b"
+_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a <Picture 1>\uff08\u9996\u5e27/\u80cc\u666f\u73af\u5883/\u4e3b\u4f53\u521d\u59cb\u59ff\u6001/\u670d\u88c5/\u4f53\u6001\u53c2\u8003\uff09\u3002"
+             "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u89c6\u9891\u5f00\u5934\u7684\u573a\u666f\u3001\u4e3b\u4f53\u7684\u59ff\u6001\u3001\u670d\u88c5\u4e0e\u4f53\u6001\uff0c\u4f7f\u9996\u5e27\u4e0e <Picture 1> \u5b8c\u5168\u4e00\u81f4\uff1b"
              "\u5e76\u4fdd\u8bc1\u5168\u7a0b\u955c\u5934\u65e0\u4efb\u4f55\u5207\u6362/\u8fd0\u955c/\u63a8\u62c9\u3002")
 
 _I2VA_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a <Picture 1>\uff0c\u5373\u76ee\u6807\u89c6\u9891 0.00 \u79d2\u7684\u7b2c\u4e00\u5e27\u3002"
@@ -449,6 +449,12 @@ def _gen_script_json(llm, system, user, img, attempts=5):
 
 # ============================================================ \u5355\u4e00\u5267\u672c/\u8f6c\u8bd1\u751f\u6210
 def _fmt_refs(cfg):
+    """\u628a\u53c2\u8003\u56fe/\u97f3\u9891\u6574\u7406\u6210\u7ed9 LLM \u7684\u53c2\u8003\u6e05\u5355\u3002
+
+    **\u5fc5\u987b 1-based**\uff1aH3 \u63d0\u793a\u8bcd\u7528 `<Picture N>` / `<Audio N>` \u5f15\u7528\u53c2\u8003\uff0c\u5e8f\u53f7\u4ece 1 \u8d77\uff0c
+    \u4e14\u7b2c 1 \u5f20\u53c2\u8003\u56fe\u63a5\u5230\u7684\u6b63\u662f `ref_image_0` \u63d2\u69fd \u2192 \u5728 H3 \u91cc\u5448\u73b0\u4e3a `<Picture 1>`\u3002
+    \u6e05\u5355\u91cc\u76f4\u63a5\u6807\u51fa\u8be5\u6807\u7b7e\uff0c\u907f\u514d\u683c\u5f0f\u5e08\u5199\u6210 `<Picture 0>` \u6216\u6574\u4f53\u9519\u4f4d\u4e00\u4f4d\u3002
+    """
     refs = cfg["refs"] or []
     auds = cfg["audios"] or []
 
@@ -456,9 +462,11 @@ def _fmt_refs(cfg):
         n = (item or {}).get("note") or ""
         return f"{name} \u00b7 \u53c2\u8003\uff1a{n}" if n else name
 
-    ref_txt = "\n".join(f"{i}. " + _desc(r, cfg["_ref_names"][i]) for i, r in enumerate(refs))
-    aud_txt = ("\n# \u53ef\u7528\u53c2\u8003\u97f3\u9891\n" + "\n".join(f"{i}. " + _desc(a, cfg["_aud_names"][i])
-                                        for i, a in enumerate(auds))
+    ref_txt = "\n".join(f"<Picture {i}> = " + _desc(r, nm)
+                        for i, (r, nm) in enumerate(zip(refs, cfg["_ref_names"]), 1))
+    aud_txt = ("\n# \u53ef\u7528\u53c2\u8003\u97f3\u9891\uff08\u5e8f\u53f7\u5373\u63d0\u793a\u8bcd\u4e2d\u7684 <Audio N>\uff0c\u4ece 1 \u8d77\uff09\n"
+               + "\n".join(f"<Audio {i}> = " + _desc(a, nm)
+                           for i, (a, nm) in enumerate(zip(auds, cfg["_aud_names"]), 1))
                if auds else "")
     aud_desc = cfg.get("_aud_ref_desc") or ""
     if aud_desc:
@@ -750,7 +758,7 @@ def run_optimizer(cfg, llm):
                 if p and os.path.isfile(p):
                     d = analyze_ref_audio(audio_llm, p, note)
                     if d:
-                        descs.append(f"- \u53c2\u8003\u97f3\u9891{i+1}\uff08\u7528\u9014\uff1a{note}\uff09: {d}" if note else f"- \u53c2\u8003\u97f3\u9891{i+1}: {d}")
+                        descs.append(f"- <Audio {i+1}>\uff08\u7528\u9014\uff1a{note}\uff09: {d}" if note else f"- <Audio {i+1}>: {d}")
             if descs:
                 cfg["_aud_ref_desc"] = "\n".join(descs)
                 print(f"  [\u53c2\u8003\u97f3\u9891] \u5df2\u5206\u6790 {len(descs)} \u6761\u58f0\u97f3\u7279\u5f81 -> \u5199\u5165\u63d0\u793a\u8bcd")
