@@ -808,25 +808,34 @@ def extract_frames(video_path, outdir, n_frames=6, width=768, as_jpeg=False):
 
 
 # ============================================================ LLM \u751f\u6210\u5267\u672c+\u683c\u5f0f
+def _ref_list(ref_names, aud_names=None):
+    """\u628a\u53c2\u8003\u6e05\u5355\u6574\u7406\u6210\u7ed9 LLM \u7684\u6587\u672c\uff1a**1-based**\uff0c\u5e76\u76f4\u63a5\u6807\u51fa H3 \u7684\u6807\u7b7e\u3002
+
+    \u7b2c 1 \u5f20\u53c2\u8003\u56fe\u63a5\u7684\u662f `ref_image_0` \u63d2\u69fd \u2192 \u5728 H3 \u91cc\u5448\u73b0\u4e3a `<Picture 1>`\uff0c
+    \u6240\u4ee5\u6e05\u5355\u5e8f\u53f7\u5fc5\u987b\u4ece 1 \u8d77\u3001\u4e0d\u8bb8\u51fa\u73b0 0 \u53f7\uff08\u4e0e optimizer._fmt_refs \u53e3\u5f84\u4e00\u81f4\uff09\u3002"""
+    txt = "\n".join(f"<Picture {i}> = {r}" for i, r in enumerate(ref_names, 1))
+    if aud_names:
+        txt += ("\n# \u53ef\u7528\u53c2\u8003\u97f3\u9891\uff08\u5e8f\u53f7\u5373\u63d0\u793a\u8bcd\u4e2d\u7684 <Audio N>\uff0c\u4ece 1 \u8d77\uff09\n"
+                + "\n".join(f"<Audio {i}> = {a}" for i, a in enumerate(aud_names, 1)))
+    return txt
+
+
 def llm_script_and_prompt(llm, story, ref_names, aud_names, duration=15.0):
     d = float(duration)
     director_user = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n"
-        f"# \u53ef\u7528\u53c2\u8003\u56fe\n" + "\n".join(f"{i}. {r}" for i, r in enumerate(ref_names))
-        + ("\n# \u53ef\u7528\u53c2\u8003\u97f3\u9891\n" + "\n".join(f"{i}. {a}" for i, a in enumerate(aud_names))
-           if aud_names else "")
+        f"# \u53ef\u7528\u53c2\u8003\u56fe\n" + _ref_list(ref_names, aud_names)
         + f"\n\n\u8bf7\u6309 system \u7ea6\u5b9a\u7684 JSON \u4ea7\u51fa {d:g} \u79d2\u5267\u672c\u3002"
     )
     script = llm.chat_json(system_director(d), director_user)
-    guide = _read_guide()
+    # \u5b98\u65b9\u6307\u5357\u653e system\uff08\u8de8\u8c03\u7528\u7a33\u5b9a \u2192 \u524d\u7f00\u7f13\u5b58\u53ef\u590d\u7528\uff09\uff1b\u6613\u53d8\u7684\u5267\u672c JSON \u653e user \u672b\u5c3e
+    formatter_system = SYSTEM_FORMATTER + "\n\n# MiniMax \u5b98\u65b9\u6307\u5357\n" + _read_guide()
     formatter_user = (
-        f"# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\n{json.dumps(script, ensure_ascii=False)}\n\n"
-        f"# \u53c2\u8003\u56fe\n" + "\n".join(f"{i}. {r}" for i, r in enumerate(ref_names))
-        + ("\n# \u53c2\u8003\u97f3\u9891\n" + "\n".join(f"{i}. {a}" for i, a in enumerate(aud_names))
-           if aud_names else "")
-        + f"\n\n# MiniMax \u5b98\u65b9\u6307\u5357\n{guide}\n\n\u8bf7\u76f4\u63a5\u8f93\u51fa\u5b8c\u6574\u516d\u6bb5 ref2va prompt \u7eaf\u6587\u672c\u3002"
+        f"# \u53ef\u7528\u53c2\u8003\u56fe\n" + _ref_list(ref_names, aud_names)
+        + f"\n\n# \u5267\u672c\u4e2d\u95f4\u4ea7\u7269\n{json.dumps(script, ensure_ascii=False)}"
+        + "\n\n\u8bf7\u76f4\u63a5\u8f93\u51fa\u5b8c\u6574\u516d\u6bb5 ref2va prompt \u7eaf\u6587\u672c\u3002"
     )
-    prompt = llm.chat(SYSTEM_FORMATTER, formatter_user, max_tokens=32000)
+    prompt = llm.chat(formatter_system, formatter_user, max_tokens=32000)
     return script, prompt
 
 
@@ -913,14 +922,14 @@ def run_auto(args, llm):
         )
         chain["script"] = llm.chat_json(system_director(args.duration), revise_user)
         fu = (
-            f"# \u4fee\u8ba2\u540e\u5267\u672c\n{json.dumps(chain['script'], ensure_ascii=False)}\n\n"
-            f"# \u53c2\u8003\u56fe\n" + "\n".join(f"{i}. {r}" for i, r in enumerate(ref_names))
-            + ("\n# \u53c2\u8003\u97f3\u9891\n" + "\n".join(f"{i}. {a}" for i, a in enumerate(aud_names))
-               if aud_names else "")
-            + f"\n\n# MiniMax \u5b98\u65b9\u6307\u5357\n{_read_guide()}\n\n\u8bf7\u57fa\u4e8e\u4fee\u8ba2\u5267\u672c\u91cd\u65b0\u8f93\u51fa ref2va prompt \u7eaf\u6587\u672c\u3002"
+            f"# \u53ef\u7528\u53c2\u8003\u56fe\n" + _ref_list(ref_names, aud_names)
+            + f"\n\n# \u4fee\u8ba2\u540e\u5267\u672c\n{json.dumps(chain['script'], ensure_ascii=False)}"
+            + "\n\n\u8bf7\u57fa\u4e8e\u4fee\u8ba2\u5267\u672c\u91cd\u65b0\u8f93\u51fa ref2va prompt \u7eaf\u6587\u672c\u3002"
         )
-        revised = llm.chat(SYSTEM_FORMATTER + "\n\u4ec5\u9488\u5bf9\u8bc4\u5ba1\u5dee\u8ddd\u6700\u5c0f\u6539\u52a8\uff0c\u4fdd\u6301\u5df2\u8fbe\u6807\u7684\u63cf\u8ff0\u3002",
-                           fu, max_tokens=32000)
+        revised = llm.chat(
+            SYSTEM_FORMATTER + "\n\u4ec5\u9488\u5bf9\u8bc4\u5ba1\u5dee\u8ddd\u6700\u5c0f\u6539\u52a8\uff0c\u4fdd\u6301\u5df2\u8fbe\u6807\u7684\u63cf\u8ff0\u3002"
+            + "\n\n# MiniMax \u5b98\u65b9\u6307\u5357\n" + _read_guide(),
+            fu, max_tokens=32000)
         chain["prompt"] = revised
     print("= \u8fbe\u5230\u6700\u5927\u8f6e\u6570\uff0c\u8f93\u51fa\u5f53\u524d\u6700\u4f73")
     _finalize(args, best, chain, story,
