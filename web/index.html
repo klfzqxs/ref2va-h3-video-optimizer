@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ref2VA H3 视频提示词优化器</title>
+<title>MiniMAX H3 Ref2VA/I2VA 视频质量优化器</title>
 <style>
   :root{--bg:#0f1115;--panel:#181b22;--line:#2a2f3a;--ink:#e6e9ef;--dim:#9aa3b2;--acc:#4c8dff;--ok:#3ecf8e;--bad:#ff5d6c;}
   *{box-sizing:border-box}
@@ -11,6 +11,13 @@
   header{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:5}
   header h1{font-size:16px;margin:0;font-weight:600}
   header .sub{color:var(--dim);font-size:12px}
+  header h1 .ver{color:var(--dim);font-size:12px;font-weight:400;margin-left:6px}
+  a.wb{color:var(--acc);text-decoration:none}
+  a.wb:hover{text-decoration:underline}
+  b.eff{font-size:15px}
+  b.eff.ok{color:var(--ok)}
+  b.eff.warn{color:#e2b33c}
+  b.eff.bad{color:var(--bad)}
   main{padding:18px 20px;max-width:1120px;margin:0 auto}
   h2{font-size:14px;margin:18px 0 8px;color:var(--acc)}
   .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
@@ -34,6 +41,27 @@
   .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px;margin-top:10px}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
   .card h3{margin:0 0 8px;font-size:13px}
+  .ck{padding:6px 8px;border-left:3px solid var(--line);margin:4px 0;font-size:12px;line-height:1.5;background:rgba(255,255,255,.02)}
+  .ck.ok{border-color:#2e7d32}
+  .ck.warn{border-color:#b8860b}
+  .ck.bad{border-color:#b3261e}
+  .thumb{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-right:6px;vertical-align:middle}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;border:1px solid var(--line);color:var(--dim)}
+  .pill.ok{border-color:#2e7d32;color:#7ddc81}
+  .pill.bad{border-color:#b3261e;color:#ff9b93}
+  .foldh{cursor:pointer;user-select:none}
+  .foldh::before{content:"▾ ";color:var(--dim)}
+  .foldh.folded::before{content:"▸ "}
+  .foldbody.hidden{display:none}
+  .round{border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;background:var(--panel)}
+  .round .rh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;margin-bottom:6px}
+  .round .sc{font-weight:700}
+  .round video{max-width:240px;border-radius:6px;margin-top:6px}
+  .round .rrow{margin-top:6px;display:flex;gap:6px;flex-wrap:wrap}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);background:#1b1f27;
+    border:1px solid var(--line);color:#e8e8ea;padding:9px 16px;border-radius:22px;font-size:13px;
+    opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;z-index:99}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
   .jobs{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
   .refrow{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;margin:8px 0;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:center}
   .refrow input[type=file]{background:#0c0e12;border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:6px;font-size:12px}
@@ -42,8 +70,8 @@
 </head>
 <body>
 <header>
-  <h1>Ref2VA 视频质量优化器</h1>
-  <span class="sub">作者 微博@快乐肥宅庆先森 1.0正式版</span>
+  <h1>MiniMAX H3 Ref2VA/I2VA 视频质量优化器 <span class="ver">2.0正式版</span></h1>
+  <span class="sub">作者 <a class="wb" href="https://weibo.com/u/2987585965" target="_blank" rel="noopener">微博@快乐肥宅庆先森</a></span>
   <span id="status"></span>
 </header>
 <main>
@@ -51,7 +79,7 @@
   <div class="grid">
     <div class="field"><label>任务名称</label><input id="name" value="mytask"></div>
     <div class="field"><label>优化目标</label><input id="target" value="整体画质与表现最优"></div>
-    <div class="field"><label>视频时长（秒）</label><input id="duration" type="number" value="10"></div>
+    <div class="field"><label>视频时长（秒，1–60）</label><input id="duration" type="number" value="10" min="1" max="60" step="1" title="单次生成长度上限 60 秒：≤15 秒在 H3 训练范围内；15–60 秒为实测长视频可用区（60 秒是质量高峰）；超过 60 秒请分两段生成并用尾帧续接"></div>
   </div>
   <div class="field accent"><label>画面内容描述（纯文字描述即可；不填参考图时即纯文字驱动 T2VA）</label>
     <textarea id="story">清晨的山谷，晨雾在林间缓缓流动，阳光从云隙洒落，一条溪流蜿蜒而下，远处雪山映着晨光，环境声只有风声与鸟鸣。</textarea>
@@ -79,7 +107,7 @@
     <div class="row"><button class="ghost small" onclick="addRow('audrows','audio')">＋ 添加参考音频</button></div>
   </div>
 
-  <h2>模型 / 采样参数</h2>
+  <h2 class="foldh" data-fold>模型 / 采样参数</h2>
   <div class="grid"><div class="field"><label>ComfyUI 地址</label><input id="comfy_url" value="http://127.0.0.1:8000"></div></div>
   <div class="grid">
     <div class="field"><label>模型文件（UNET，ComfyUI 内全名，含子目录）</label><input id="model" list="modelList" placeholder="点下方「读取」自动列出，或手动填"><datalist id="modelList"></datalist></div>
@@ -96,25 +124,51 @@
       <input id="admission" type="number" value="5" style="width:32%">&nbsp;<input id="maxiter" type="number" value="12" style="width:32%">&nbsp;<input id="patience" type="number" value="3" style="width:32%">
     </div>
   </div>
-  <div class="row"><button class="ghost small" onclick="loadModels()">读取 ComfyUI 模型列表</button><span class="hint" id="modelsHint">点此自动列出该 ComfyUI 已装模型名，在模型/CLIP/LoRA 输入框里选择即可（含子目录全名）</span></div>
-  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">LoRA（可选，精渲与快速模式都生效；可加多条）</h4>
-  <div id="lorarows"></div>
-  <div class="row"><button class="ghost small" onclick="addLoraRow()">＋ 添加 LoRA</button><span class="hint">选 LoRA 模型名 + 强度(0~2)；留空=不加</span></div>
-  <datalist id="loraList"></datalist>
   <div class="checks">
     <label id="quickWrap"><input id="quick" type="checkbox"> 快速渲染（分辨率与步数各 ×0.707，耗时约减半；模型/采样器/时长/画幅/LoRA 与精渲相同）</label>
     <label><input id="fine" type="checkbox" checked> 结束精渲（全质量）</label>
   </div>
+  <div class="row"><button class="ghost small" onclick="loadModels()">读取 ComfyUI 模型列表</button><button class="ghost small" onclick="runDoctor()">环境自检</button><span class="hint" id="modelsHint">点此自动列出该 ComfyUI 已装模型名，在模型/CLIP/LoRA 输入框里选择即可（含子目录全名）</span></div>
+  <div id="doctorBox" style="display:none"></div>
 
-  <h2>LLM 端点（默认本地；不涉密内容可直接用云端 API）</h2>
+  <h4 class="foldh" data-fold data-fold-closed>高级 / 性能（点标题展开）</h4>
   <div class="grid">
-    <div class="field"><label>写剧/评分 LLM 地址（API 或本地）</label><input id="llm_base" value="http://127.0.0.1:8080/v1"></div>
+    <div class="field"><label>权重精度 weight_dtype（仅 safetensors 生效）</label><select id="weight_dtype">
+      <option value="default">default（跟随文件）</option>
+      <option value="fp8_e4m3fn">fp8_e4m3fn（省显存）</option>
+      <option value="fp8_e4m3fn_fast">fp8_e4m3fn_fast</option>
+      <option value="fp8_e5m2">fp8_e5m2</option>
+    </select><span class="hint" id="wdHint">选 .gguf 权重时此项无效（会被自动忽略）</span></div>
+    <div class="field"><label>参考图尺寸策略 ref_image_size（仅 Ref2VA 生效）</label><select id="ref_image_size">
+      <option value="match">match：按生成画幅缩放（默认，省显存/更快）</option>
+      <option value="max">max：参考管线 2048 短边（身份最准，但参考 token 全程参与，显存与耗时可能翻几倍）</option>
+    </select><span class="hint" id="refSizeHint">「参考图 token 会贯穿每一步采样」，所以 max 明显更慢更吃显存</span></div>
+    <div class="field"><label>评审抽帧数 review_frames</label><input id="review_frames" type="number" value="32" min="4" max="64"><span class="hint">长视频（>15 秒）会自动抬到 40；此处设的是基准值</span></div>
+  </div>
+  <h2 class="foldh" data-fold>显存预算估计（测试功能）</h2>
+  <div class="row">
+    <button class="ghost small" onclick="calcBudget()">重算</button>
+    <button class="ghost small" onclick="copyBudgetReport()">复制偏差记录（报 issue 用）</button>
+    <a class="hint" style="margin-left:6px" href="https://github.com/klfzqxs/ref2va-h3-video-optimizer/issues/new" target="_blank">开 issue</a>
+    <span class="hint" id="budgetHint">改时长 / 画幅 / 模型会自动重算，给出上面五项估算与「完美 / 能用但会慢 / 不可用」的判断。
+      这是<b>测试功能</b>，估算可能有偏差——跑完发现和实际不符，请点「复制偏差记录」开 issue 反馈。</span>
+  </div>
+  <div id="budgetBox"><div class="hint">—</div></div>
+
+  <h4 class="foldh" data-fold>LoRA（可选，精渲与快速模式都生效；可加多条）</h4>
+  <div id="lorarows"></div>
+  <div class="row"><button class="ghost small" onclick="addLoraRow()">＋ 添加 LoRA</button><span class="hint">选 LoRA 模型名 + 强度(0~2)；留空=不加</span></div>
+  <datalist id="loraList"></datalist>
+
+  <h2>LLM 端点（必须是可以看图的多模态模型，支持本地、内网或云端 API，云端 API 需自备 API-Key）</h2>
+  <div class="grid">
+    <div class="field"><label>写剧/评分 LLM 地址（本地 / 内网 / 云端 API 均可）</label><input id="llm_base" value="http://127.0.0.1:8080/v1"></div>
     <div class="field"><label>模型 id</label><input id="llm_model" list="llmModelList" placeholder="点下方「读取 LLM 模型」自动列出，或填模型名"><datalist id="llmModelList"></datalist></div>
     <div class="field"><label>API Key（本地可留空；云端必填）</label><input id="llm_api_key" placeholder="sk-..."></div>
   </div>
   <div class="row"><button class="ghost small" onclick="loadLLMModels()">读取 LLM 模型列表</button><span class="hint" id="llmModelsHint">填好 LLM 地址/API Key 后读取该端点的可用模型 id</span></div>
 
-  <h4 style="margin:12px 0 4px;font-size:13px;color:var(--dim)">音频评审（默认关闭；在线音频模型少、本地部署麻烦，需要时才开）</h4>
+  <h4 class="foldh" data-fold data-fold-closed>音频评审（默认关闭；在线音频模型少、本地部署麻烦，需要时才开）</h4>
   <div class="grid">
     <div class="field"><label>音频 LLM 地址</label><input id="audio_base" placeholder="http://127.0.0.1:8081/v1"></div>
     <div class="field"><label>音频模型 id</label><input id="audio_model"></div>
@@ -122,10 +176,11 @@
   </div>
   <div class="checks"><label><input id="audio_on" type="checkbox"> 开启音频评审（填上方信息才生效）</label></div>
 
-  <div class="row">
+  <div class="row foldstop">
     <button id="run">运行优化</button>
     <button id="cancel" class="ghost" onclick="cancelJob()">终止当前任务</button>
     <span class="badge b-queued" id="jobbadge">未运行</span>
+    <span class="pill" id="comfypill" title="ComfyUI 连接状态（点「环境自检」可看详情）">ComfyUI ?</span>
   </div>
 
   <h2>运行日志</h2>
@@ -133,16 +188,28 @@
   <pre id="log">（暂无）点击「运行优化」开始；结束后可查看结果视频。</pre>
 
   <div class="cards">
-    <section class="card"><h3>结果视频</h3><div class="out" id="videos">— 完成后显示 —</div></section>
-    <section class="card"><h3>最优 Prompt</h3><div class="out" id="prompts">— 完成后显示 —</div></section>
+    <section class="card"><h3>结果视频 <button class="ghost small" onclick="copyChampion('prompt')">复制最优提示词</button> <button class="ghost small" onclick="copyChampion('script')">复制剧本</button></h3><div class="out" id="videos">— 完成后显示 —</div></section>
+    <section class="card"><h3>最优 Prompt / 剧本</h3><div class="out" id="prompts">— 完成后显示 —</div></section>
   </div>
 
-  <h2>历史</h2>
+  <h2 class="foldh" data-fold>逐轮结果（每轮一条，便于对比）</h2>
+  <div id="rounds"><div class="hint">任务结束后显示每一轮的分数、verdict 与视频；长视频每轮 8–16 分钟，逐轮对比比只看最终结果有用。</div></div>
+
+  <h2 class="foldh" data-fold data-fold-closed>配置</h2>
+  <div class="row">
+    <button class="ghost small" onclick="exportConfig()">导出配置 JSON</button>
+    <button class="ghost small" onclick="fillExample()">用示例回填</button>
+    <button class="ghost small" onclick="resetForm()">清空表单</button>
+    <span class="hint" id="cfgHint">导出的 config.json 与页面表单一致，可直接喂给命令行 `python optimizer.py --config`</span>
+  </div>
+
+  <h2 class="foldh" data-fold data-fold-closed>历史</h2>
   <div class="jobs" id="jobs">（无）</div>
 </main>
 <footer style="text-align:center;color:#666;font-size:12px;padding:18px 0 26px;">
-  MiniMAX H3 Reference to Video/Audio 提示词优化器 v1.1 正式版 · 有任何使用问题请联系作者
+  MiniMAX H3 Ref2VA/I2VA 视频质量优化器 2.0正式版 · 有任何使用问题请联系 <a class="wb" href="https://weibo.com/u/2987585965" target="_blank" rel="noopener">微博@快乐肥宅庆先森</a>
 </footer>
+<div class="toast" id="toast"></div>
 
 <script>
 const $=id=>document.getElementById(id);
@@ -179,6 +246,7 @@ function collectRows(containerId){
     const f=r.querySelector('input.file').files[0];
     const note=r.querySelector('input.note').value;
     if(f) out.push({name:f.name, file:f, note:note});
+    else if(r._data) out.push({name:r._name||('restored_'+out.length), data:String(r._data).split(',')[1], note:note});
   });
   return out;
 }
@@ -198,6 +266,199 @@ function collectLoras(){
   return out;
 }
 function fileB64(f){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=rej;r.readAsDataURL(f);});}
+
+/* ==================== 通用工具 ==================== */
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+/* 预算文案里用 **强调** 标重点（复制到 issue 时是 markdown）；页面显示时先转义再换成 <b> */
+function mdBold(s){return esc(s).replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');}
+
+/* ==================== ComfyUI 状态灯 ==================== */
+function setComfyPill(ok,info){
+  const p=$('comfypill'); if(!p) return;
+  p.className='pill '+(ok?'ok':'bad');
+  p.textContent=ok?('ComfyUI 在线'+(info&&info.vram_free_gb!=null?('（空闲 '+info.vram_free_gb+'/'+info.vram_total_gb+' GB）'):'')):'ComfyUI 离线';
+  if(ok&&info&&info.version) p.title='comfy '+info.version+' · '+(info.device||'');
+}
+async function pingComfy(){
+  try{
+    const q=new URLSearchParams({comfy_url:$('comfy_url').value||''});
+    const r=await fetch('/api/ping?'+q.toString()); const j=await r.json();
+    setComfyPill(!!j.ok,j);
+  }catch(e){ setComfyPill(false,null); }
+}
+
+/* ==================== 环境自检 ==================== */
+async function runDoctor(){
+  const box=$('doctorBox'); box.style.display='';
+  box.innerHTML='<div class="hint" style="margin-top:8px">自检中…（会连 ComfyUI 与 LLM，通常几秒）</div>';
+  try{
+    const q=new URLSearchParams({comfy_url:$('comfy_url').value||'', llm_base:$('llm_base').value||'',
+      llm_key:$('llm_api_key').value||'', model:$('model').value||'', clip:$('clip').value||'',
+      loras:collectLoras().map(l=>l.name).join(',')});
+    const r=await fetch('/api/doctor?'+q.toString()); const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    const mark={ok:'✓',warn:'!',error:'✗'};
+    box.innerHTML='<div class="card" style="margin-top:10px"><h3>环境自检：'+esc(j.summary)+'</h3>'+
+      (j.checks||[]).map(c=>'<div class="ck '+esc(c.level)+'"><b>'+mark[c.level]+'</b> <b>'+esc(c.label)+'</b>：'+esc(c.detail)+'</div>').join('')+'</div>';
+    setComfyPill(!!j.comfy_online,null);
+    if(j.comfy_online) pingComfy();
+  }catch(e){
+    box.innerHTML='<div class="hint" style="margin-top:8px">自检失败：'+esc(e.message)+'</div>';
+  }
+}
+
+/* ============ 参考图持久化：IndexedDB 存 dataURL ============
+   刷新页面不该丢掉刚选好的参考图。文本字段走 localStorage（saveForm），
+   图片 dataURL 动辄几 MB、localStorage 装不下，所以放 IndexedDB。 */
+const IDB_NAME='ref2va_ui', IDB_STORE='kv', IDB_REF_KEY='refs.v1';
+function idbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open(IDB_NAME,1);
+  r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(IDB_STORE))r.result.createObjectStore(IDB_STORE);};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+async function idbSet(k,v){try{const db=await idbOpen();return await new Promise((res,rej)=>{
+  const t=db.transaction(IDB_STORE,'readwrite');t.objectStore(IDB_STORE).put(v,k);
+  t.oncomplete=()=>res(true);t.onerror=()=>rej(t.error);});}catch(e){return false;}}
+async function idbGet(k){try{const db=await idbOpen();return await new Promise((res,rej)=>{
+  const t=db.transaction(IDB_STORE,'readonly');const q=t.objectStore(IDB_STORE).get(k);
+  q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}catch(e){return null;}}
+function setRowData(row,name,dataUrl){
+  row._name=name; row._data=dataUrl;
+  row.querySelectorAll('img.thumb').forEach(x=>x.remove());
+  if(dataUrl){
+    const inp=row.querySelector('input.file'); if(inp) inp.style.display='none';
+    const img=document.createElement('img'); img.className='thumb'; img.src=dataUrl;
+    img.title=(name||'')+'（已从本机缓存恢复；重新选择文件可替换）';
+    row.insertBefore(img,row.firstChild);
+  }
+}
+async function saveRefsToIdb(){
+  const grab=sel=>[...document.querySelectorAll(sel+' .refrow')]
+    .map(r=>({note:r.querySelector('.note').value,name:r._name||'',data:r._data||null}))
+    .filter(x=>x.data);
+  await idbSet(IDB_REF_KEY,{refs:grab('#refrows'),audios:grab('#audrows')});
+}
+async function restoreRefsFromIdb(){
+  const o=await idbGet(IDB_REF_KEY); if(!o) return false;
+  let any=false;
+  const mk=(cont,arr,kind)=>{ if(!arr||!arr.length) return;
+    $(cont).innerHTML=''; arr.forEach(x=>{ addRow(cont,kind); const nr=$(cont).lastElementChild;
+      nr.querySelector('.note').value=x.note||''; setRowData(nr,x.name,x.data); }); any=true; };
+  mk('refrows',o.refs,'ref'); mk('audrows',o.audios,'audio');
+  if(any) applyFlowUI();
+  return any;
+}
+async function captureRefFile(inp){
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  const row=inp.closest('.refrow'); if(!row) return;
+  const du=await new Promise(res=>{const r=new FileReader();r.onload=()=>res(String(r.result));r.onerror=()=>res(null);r.readAsDataURL(f);});
+  if(du){ setRowData(row,f.name,du); saveRefsToIdb(); }
+}
+function bindRefCapture(){
+  document.addEventListener('change',e=>{
+    const t=e.target;
+    if(t&&t.classList&&t.classList.contains('file')) captureRefFile(t);
+  });
+}
+function updateWeightDtypeHint(){
+  const h=$('wdHint'); if(!h) return;
+  const m=($('model').value||'').toLowerCase();
+  h.textContent = m.endsWith('.gguf')
+    ? '当前是 .gguf：weight_dtype 会被忽略（UnetLoaderGGUF 没有该输入），精度由 gguf 文件自带的量化类型决定'
+    : '仅 safetensors 生效；fp8 系列更省显存。选 .gguf 时此项无效。';
+}
+
+/* ==================== 显存预算估计 ====================
+   公式只在 core/mem_budget.py 里有一份（单一真相来源），这里每算一次都问 /api/budget，
+   避免前端复制一份公式后两边口径漂移。
+   显卡显存第一次问 ComfyUI，之后缓存到 window.__cardGb 复用，避免每次改参数都去打扰它。 */
+async function calcBudget(){
+  const box=$('budgetBox'); if(!box) return;
+  const q=new URLSearchParams({
+    duration:$('duration').value||'', megapixels:$('megapixels').value||'',
+    comfy_url:$('comfy_url').value||'', model:$('model').value||'', clip:$('clip').value||''
+  });
+  if(window.__cardGb) q.set('card_gb', window.__cardGb);
+  try{
+    const r=await fetch('/api/budget?'+q.toString()); const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    window.__cardGb=j.card_gb;
+    const b=j.budget||{};
+    const cls=(b.effect==='完美')?'ok':((b.effect==='能用但会慢')?'warn':'bad');
+    /* 效果行只留结论：「不可用」加粗标红。**理由一律收进「技术细节」折叠区**——
+       写在外面一样有人不看；真正需要它的时候是"点运行优化"那一步，run() 会弹对话框给理由要确认。 */
+    window.__budgetEffect=b.effect||''; window.__budgetWhy=b.why||'';
+    const effCls=(b.effect==='不可用')?'bad':((b.effect==='能用但会慢')?'warn':'ok');
+    box.innerHTML=`<div class="ck ${cls}">
+      ${(b.lines||[]).map(x=>`<div>${esc(x.label)}：<b>${esc(x.value)}</b></div>`).join('')}
+      <div style="margin-top:5px">预计使用效果：<b class="eff ${effCls}">${esc(b.effect||'—')}</b></div>
+      <details style="margin-top:6px"><summary class="hint" style="cursor:pointer">技术细节（token / 包线 / 模型档案 / 标定）</summary>
+        <span class="hint">怎么判出来的：${mdBold(b.why||'')}<br>${esc(j.note||'')}${j.clip_profile?('<br>'+esc(j.clip_profile.text)):''}${(j.model_notes&&j.model_notes.length)?('<br>'+esc(j.model_notes.join('；'))):''}${j.samples_used?('<br>已用 '+j.samples_used+' 个你自己的实测样本标定'):''}</span>
+      </details>
+    </div>`;
+  }catch(e){ box.innerHTML='<div class="hint">预算估计失败：'+esc(e.message)+'</div>'; }
+}
+
+/* 点「运行优化」前的闸门：估计为「不可用」时弹对话框给出理由，让用户自己决定要不要强行继续。
+   不硬拦——估算本来就是测试功能，可能有偏差；但也不能让人在毫无提示的情况下踩进去。 */
+async function budgetGate(){
+  let eff=window.__budgetEffect, why=window.__budgetWhy;
+  if(!eff){ try{ await calcBudget(); }catch(e){} eff=window.__budgetEffect; why=window.__budgetWhy; }
+  if(eff!=='不可用') return 'ok';
+  const txt=String(why||'').replace(/\*\*/g,'');
+  return confirm('显存预算估计：不可用\n\n'+txt
+    +'\n\n点「确定」＝ 我知道风险，强行继续；点「取消」＝ 返回调整设置。') ? 'forced' : 'cancel';
+}
+
+/* 复制「偏差记录」：预测 vs 实测，直接粘贴到 GitHub issue。
+   预测值来自 history 的 run.budget_pred（开跑前记录），实测值来自每次渲染记录 vram_peak_gb。 */
+async function copyBudgetReport(){
+  const L=[];
+  L.push('## 显存预算估计偏差反馈（测试功能）');
+  L.push('');
+  L.push('### 环境');
+  try{
+    const st=await (await fetch('/api/ping?'+new URLSearchParams({comfy_url:$('comfy_url').value||''}))).json();
+    L.push('- 显卡：'+(st.device||'?')+' · 总显存 '+(st.vram_total_gb!=null?st.vram_total_gb:'?')+' GB'
+           +'（空闲 '+(st.vram_free_gb!=null?st.vram_free_gb:'?')+' GB）');
+    L.push('- ComfyUI '+(st.version||'?'));
+  }catch(e){ L.push('- 环境读取失败：'+e.message); }
+  L.push('- 项目版本：2.0正式版');
+  L.push('');
+  L.push('### 设置');
+  L.push('- 时长 '+($('duration').value||'?')+' 秒 · 画幅 '+($('megapixels').value||'?')+' MP · 步数 '+($('steps').value||'?'));
+  L.push('- 模型 `'+($('model').value||'(未选)')+'`');
+  L.push('- weight_dtype `'+$('weight_dtype').value+'` · ref_image_size `'+$('ref_image_size').value+'`');
+  L.push('');
+  try{
+    const q=new URLSearchParams({duration:$('duration').value||'', megapixels:$('megapixels').value||'',
+      comfy_url:$('comfy_url').value||'', model:$('model').value||''});
+    if(window.__cardGb) q.set('card_gb', window.__cardGb);
+    const b=await (await fetch('/api/budget?'+q.toString())).json();
+    L.push('### 预测');
+    L.push('- '+(b.summary||''));
+    L.push('- 模型档案：`'+JSON.stringify(b.model_profile||{})+'`');
+    L.push('');
+    L.push('### 实测');
+    let rows=[];
+    if(currentJob){
+      try{
+        const jr=await (await fetch('/api/jobs/'+currentJob+'/rounds')).json();
+        const pred=(jr.run&&jr.run.budget_pred)||null;
+        if(pred) L.push('- 本次运行开跑前预测：`'+JSON.stringify(pred)+'`');
+        (jr.rounds||[]).forEach((r,i)=>{ if(r.vram_peak_gb) rows.push('- 第 '+(i+1)+' 轮 `'+(r.label||'')+'`：实测显存峰值 **'+r.vram_peak_gb+' GB**'); });
+        if(jr.run&&jr.run.tokens) L.push('- 该次提交 token：'+jr.run.tokens.toLocaleString()+'（'+jr.run.frames+' 帧）');
+      }catch(e){ rows.push('- 读取任务历史失败：'+e.message); }
+    }
+    (b.measured_tail||[]).forEach(x=>rows.push('- 历史样本：'+x.tokens.toLocaleString()+' token → 实测 '+x.peak_gb+' GB'+(x.model?('（'+x.model+'）'):'')));
+    L.push(rows.length?rows.join('\n'):'- （还没有实测峰值：跑过一档后这里会自动带上）');
+    L.push('');
+    L.push('### 偏差与现象（请补充）');
+    L.push('- 预测 vs 实测差多少：');
+    L.push('- 是否 OOM / 是否明显变慢（s/step）：');
+    L.push('- 其他：');
+    if(b.samples_used) L.push('> 已用 '+b.samples_used+' 个历史实测样本做过标定');
+  }catch(e){ L.push('（预算接口采集失败：'+e.message+'）'); }
+  await copyText(L.join('\n'), '偏差记录');
+}
 
 async function loadModels(){
   const h=$('modelsHint');
@@ -227,14 +488,24 @@ async function run(){
   const refItems=collectRows('refrows');
   if(i2v && !refItems.length){ $('status').textContent='I2VA 流程必须选 1 张参考图作为视频首帧'; return; }
   const files=[];
-  for(const it of (i2v?refItems.slice(0,1):refItems)) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
-  if(!i2v) for(const it of collectRows('audrows')) files.push({name:it.name, data:await fileB64(it.file), note:it.note});
+  for(const it of (i2v?refItems.slice(0,1):refItems)) files.push({name:it.name, data:it.file? await fileB64(it.file) : (it.data||''), note:it.note});
+  if(!i2v) for(const it of collectRows('audrows')) files.push({name:it.name, data:it.file? await fileB64(it.file) : (it.data||''), note:it.note});
   if(!$('llm_base').value || !$('llm_model').value){
     $('status').textContent='请填 LLM 地址与模型 id'; return;
   }
+  const dur=+(($('duration').value)||10);
+  if(!(dur>=1) || dur>60){
+    $('status').textContent='视频时长必须在 1–60 秒之间：单次生成上限 60 秒（15 秒以内为 H3 训练范围，15–60 秒为实测长视频可用区）。更长请分两段生成并用尾帧续接。'; return;
+  }
+  // 预算估计为「不可用」时先弹对话框给理由，由用户决定是否强行继续（估算可能不准，所以不硬拦）
+  const gate=await budgetGate();
+  if(gate==='cancel'){
+    $('status').textContent='已取消提交：显存预算估计为「不可用」——建议调小画幅/时长，或换更小的检查点。'; return;
+  }
+  if(gate==='forced') toast('已确认强行继续（预算估计：不可用，可能会换页到虚拟内存，很慢）');
   const payload={
     name:$('name').value, story:$('story').value, optimize_target:$('target').value,
-    duration:+($('duration').value||10), model:$('model').value||null, clip:$('clip').value||null,
+    duration:dur, model:$('model').value||null, clip:$('clip').value||null,
     loras:collectLoras(),
     sampler:$('sampler').value, scheduler:$('scheduler').value, steps:+($('steps').value||20),
     seed:$('seed').value? +$('seed').value : null, megapixels:+($('megapixels').value||0.6),
@@ -246,7 +517,9 @@ async function run(){
     audio_scoring:$('audio_on').checked? 'on':'off',
     comfy_url:$('comfy_url').value, quick_render:$('quick').checked, fine_render:$('fine').checked,
     admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
-    base_patience:+($('patience').value||3), files
+    base_patience:+($('patience').value||3), files,
+    weight_dtype:$('weight_dtype').value, ref_image_size:$('ref_image_size').value,
+    review_frames:+($('review_frames').value||32)
   };
   $('run').disabled=true; $('jobbadge').className='badge b-running'; $('jobbadge').textContent='提交中…';
   try{
@@ -271,6 +544,13 @@ async function poll(){
       $('run').disabled=false;
       $('videos').innerHTML=j.outputs&&j.outputs.videos.length? j.outputs.videos.map(u=>`<video controls src="${u}"></video>`).join('') : '（未找到视频文件）';
       $('prompts').innerHTML=j.outputs&&j.outputs.prompts.length? j.outputs.prompts.map(u=>`<a href="${u}" target="_blank">查看 ${u.split('/').pop()}</a>`).join('<br>') : '—';
+      // 复制按钮用得到的最优提示词/剧本 URL
+      window.__champFiles={};
+      ((j.outputs&&j.outputs.prompts)||[]).forEach(u=>{
+        if(u.endsWith('champion_prompt.txt')) window.__champFiles.prompt=u;
+        if(u.endsWith('champion_script.txt')) window.__champFiles.script=u;
+      });
+      renderRounds(currentJob);
     }
     await loadJobs();   // refresh history + run label (stops polling when idle)
   }catch(e){ }
@@ -305,7 +585,133 @@ async function openJob(id){
   $('jobbadge').textContent='查看 #'+id; $('log').textContent='加载中…'; poll(); maybeStartPoll();
 }
 
-const FORM_IDS=['name','target','duration','story','model','clip','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
+/* ==================== 提示条 ==================== */
+let _toastT=null;
+function toast(msg,ms=2400){
+  const t=$('toast'); if(!t) return;
+  t.textContent=msg; t.classList.add('on');
+  clearTimeout(_toastT); _toastT=setTimeout(()=>t.classList.remove('on'),ms);
+}
+
+/* ==================== 复制 ==================== */
+async function copyText(txt,label){
+  if(!txt){ toast('没有可复制的内容'); return; }
+  const msg='已复制'+(label?('：'+label):'');
+  try{ await navigator.clipboard.writeText(txt); toast(msg); return; }catch(e){}
+  // 非 https / 无剪贴板权限时的兜底
+  const ta=document.createElement('textarea');
+  ta.value=txt; ta.style.position='fixed'; ta.style.left='-9999px';
+  document.body.appendChild(ta); ta.select();
+  let ok=false; try{ ok=document.execCommand('copy'); }catch(_){}
+  ta.remove();
+  toast(ok?msg:'复制失败，请手动选择复制');
+}
+async function copyFromUrl(url,label){
+  try{
+    const r=await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status);
+    await copyText(await r.text(), label);
+  }catch(e){ toast('取回内容失败：'+e.message); }
+}
+function copyChampion(kind){
+  const u=(window.__champFiles||{})[kind];
+  if(!u){ toast('还没生成'+(kind==='prompt'?'最优提示词':'剧本')); return; }
+  copyFromUrl(u, kind==='prompt'?'最优提示词':'剧本');
+}
+
+/* ==================== 折叠卡片 ====================
+   .foldh 之后的兄弟节点自动包进 .foldbody，点标题展开/收起；
+   遇到下一个标题（h2/h4/.foldh）或 .foldstop 就停——避免把运行按钮折进去。 */
+function initFolders(){
+  document.querySelectorAll('.foldh').forEach(h=>{
+    const body=document.createElement('div');
+    body.className='foldbody';
+    let n=h.nextSibling;
+    while(n){
+      const nx=n.nextSibling;
+      if(n.nodeType===1 && (n.classList.contains('foldh')||n.classList.contains('foldstop')||/^H[24]$/.test(n.tagName))) break;
+      body.appendChild(n); n=nx;
+    }
+    h.parentNode.insertBefore(body,h.nextSibling);
+    if(h.hasAttribute('data-fold-closed')){ h.classList.add('folded'); body.classList.add('hidden'); }
+    h.addEventListener('click',()=>body.classList.toggle('hidden',h.classList.toggle('folded')));
+  });
+}
+
+/* ==================== 逐轮结果 ==================== */
+function renderRound(a,i){
+  const kindTxt=a.kind==='admission_rewrite'?'准入':'爬山';
+  const sc=(a.score==null)?null:a.score;
+  const cls=(sc==null)?'':(sc>=7?'ok':(sc>=5?'':'bad'));
+  const vids=(a.videos||[]).map(u=>`<video controls src="${u}"></video>`).join('');
+  const f=a.files||{};
+  const btns=[
+    f.prompt?`<button class="ghost small" data-copy="${f.prompt}" data-label="第${i+1}轮提示词">复制提示词</button>`:'',
+    f.script?`<button class="ghost small" data-copy="${f.script}" data-label="第${i+1}轮剧本">复制剧本</button>`:'',
+    f.prompt?`<a href="${f.prompt}" target="_blank">查看提示词</a>`:'',
+    a.video?`<a href="${a.video}" target="_blank">打开视频</a>`:''
+  ].filter(Boolean).join(' ');
+  return `<div class="round">
+    <div class="rh"><b>第 ${i+1} 轮</b><span class="badge b-queued">${kindTxt}</span>
+      <span class="sc">overall ${sc==null?'—':sc}</span>
+      <span class="pill ${cls}">${esc(a.verdict||'-')}</span>
+      <span class="hint">${esc(a.label||'')} · 提示词 ${a.prompt_len||0} 字符</span></div>
+    ${vids}${btns?`<div class="rrow">${btns}</div>`:''}</div>`;
+}
+async function renderRounds(jobId){
+  const box=$('rounds'); if(!box) return;
+  try{
+    const r=await fetch('/api/jobs/'+jobId+'/rounds'); const j=await r.json();
+    if(!j.ready){ box.innerHTML='<div class="hint">任务结束后显示逐轮结果。</div>'; return; }
+    const rs=j.rounds||[];
+    if(!rs.length){ box.innerHTML='<div class="hint">本次任务没有可展示的轮次。</div>'; return; }
+    box.innerHTML=`<div class="hint">共 ${rs.length} 轮 · 停止原因：${esc(j.stop_reason||'-')}</div>`
+      + rs.map(renderRound).join('');
+  }catch(e){ box.innerHTML='<div class="hint">读取逐轮结果失败：'+esc(e.message)+'</div>'; }
+}
+
+/* ==================== 配置导出 / 回填 / 清空 ==================== */
+function collectConfig(){
+  return {
+    story:$('story').value, optimize_target:$('target').value, flow:currentFlow(),
+    llm_base:$('llm_base').value, llm_model:$('llm_model').value,
+    llm_api_key:$('llm_api_key').value||null,
+    audio_llm_base:$('audio_base').value||null, audio_llm_model:$('audio_model').value||null,
+    audio_llm_api_key:$('audio_key').value||null, audio_scoring:$('audio_on').checked?'on':'off',
+    comfy_url:$('comfy_url').value, model:$('model').value||null, clip:$('clip').value||null,
+    weight_dtype:$('weight_dtype').value, ref_image_size:$('ref_image_size').value,
+    loras:collectLoras(), sampler:$('sampler').value, scheduler:$('scheduler').value,
+    steps:+($('steps').value||20), seed:$('seed').value?+$('seed').value:null,
+    megapixels:+($('megapixels').value||0.6), aspect:$('aspect').value,
+    duration:+(($('duration').value)||10),
+    quick_render:$('quick').checked, fine_render:$('fine').checked,
+    admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
+    base_patience:+($('patience').value||3), review_frames:+($('review_frames').value||32),
+    refs:collectRows('refrows').map(x=>({path:x.name,note:x.note})),
+    audios:collectRows('audrows').map(x=>({path:x.name,note:x.note}))
+  };
+}
+function exportConfig(){
+  const cfg=collectConfig();
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'}));
+  a.download='config.json'; a.click(); URL.revokeObjectURL(a.href);
+  toast('已导出 config.json（参考图路径需按本机实际补全）');
+}
+async function fillExample(){
+  try{
+    const r=await fetch('/api/defaults'); const j=await r.json();
+    if(!r.ok) throw new Error(j.error||('HTTP '+r.status));
+    applyForm(j); saveForm();
+    toast('已用示例回填（参考图/音频需自行上传；示例里的路径只是占位）');
+  }catch(e){ toast('回填失败：'+e.message); }
+}
+function resetForm(){
+  try{ localStorage.removeItem('ref2va_form'); }catch(_){}
+  try{ idbSet(IDB_REF_KEY,{refs:[],audios:[]}); }catch(_){}
+  location.reload();
+}
+
+const FORM_IDS=['name','target','duration','story','model','clip','weight_dtype','ref_image_size','review_frames','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
 function saveForm(){
   try{
@@ -341,7 +747,7 @@ function restoreForm(){
   applyFlowUI();
 }
 function bindSave(){ document.addEventListener('input', debounce(saveForm,400)); document.addEventListener('change', debounce(saveForm,400)); }
-const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
+const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',weight_dtype:'weight_dtype',ref_image_size:'ref_image_size',review_frames:'review_frames',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
 function applyForm(f){
   if(!f) return;
   Object.entries(APPLY_MAP).forEach(([id,key])=>{ if($(id)&&f[key]!=null&&f[key]!=='') $(id).value=f[key]; });
@@ -361,7 +767,19 @@ function applyForm(f){
   if(!$('lorarows').children.length) addLoraRow();
   applyFlowUI();
 }
-$('run').onclick=run; loadJobs(); restoreForm(); bindSave();
+$('run').onclick=run; initFolders(); loadJobs(); restoreForm(); bindSave(); bindRefCapture();
+$('rounds').addEventListener('click',e=>{
+  const b=e.target.closest('[data-copy]'); if(!b) return;
+  copyFromUrl(b.getAttribute('data-copy'), b.getAttribute('data-label')||'');
+});
+updateWeightDtypeHint(); $('model').addEventListener('input',updateWeightDtypeHint);
+['duration','megapixels','model','aspect','steps'].forEach(id=>{
+  const el=$(id); if(!el) return;
+  el.addEventListener('input',debounce(calcBudget,500));
+  el.addEventListener('change',debounce(calcBudget,500));
+});
+calcBudget();
+restoreRefsFromIdb(); pingComfy(); setInterval(pingComfy,30000);
 $('logauto').onchange=function(){ if(this.checked){ maybeStartPoll(); } else { stopPoll(); } };
 </script>
 </body>

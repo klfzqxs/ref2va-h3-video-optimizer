@@ -1,5 +1,9 @@
 @echo off
 setlocal
+rem This file is intentionally ASCII-only: a UTF-8 .bat shows mojibake on a GBK console,
+rem and switching codepage mid-file (chcp 65001) makes cmd fail to parse the rest.
+rem The Chinese product name is printed by server.py instead (Windows console output
+rem goes through WriteConsoleW, so it is correct under any codepage).
 cd /d "%~dp0"
 
 rem ===== editable config =====
@@ -20,7 +24,7 @@ if not defined PORT set "PORT=8090"
 rem ============================
 
 echo ================================================
-echo   Ref2VA H3 v1.1
+echo   MiniMAX H3 Ref2VA/I2VA Video Quality Optimizer 2.0
 echo   Local UI : http://127.0.0.1:%PORT%/
 echo   LAN      : http://your-ip:%PORT%/   (HOST=0.0.0.0)
 echo   Stop     : press Ctrl+C

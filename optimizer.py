@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Ref2VA \u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71\uff09\u3002
+MiniMAX H3 Ref2VA/I2VA \u89c6\u9891\u8d28\u91cf\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71\uff09\u3002
 
 \u7528\u6cd5:
   python optimizer.py --config <config.json> [--dry-run]
@@ -13,7 +13,9 @@ import os
 import random
 import subprocess
 import sys
+import threading
 import time
+import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "core"))
@@ -24,6 +26,8 @@ except Exception:
     pass
 
 import ref2va_auto as ra
+import video_metrics as vm
+import mem_budget as mb
 from llm import LLM
 
 ASPECT_LABELS = [
@@ -108,7 +112,9 @@ def build_gcfg(cfg, prompt, seed):
         "seed": seed,
         "duration_s": cfg.get("duration", 10),
         "steps": st, "denoise": 1.0,
-        "model": cfg.get("model"), "clip": cfg.get("clip"), "weight_dtype": "default",
+        "model": cfg.get("model"), "clip": cfg.get("clip"),
+        "weight_dtype": cfg.get("weight_dtype") or "default",
+        "ref_image_size": cfg.get("ref_image_size") or "match",
         "loras": cfg.get("loras") or [],
         "sampler": cfg.get("sampler"), "scheduler": cfg.get("scheduler"),
         "megapixels": mp,
@@ -116,6 +122,80 @@ def build_gcfg(cfg, prompt, seed):
         # I2VA \u53ea\u5403\u9996\u5e27\uff0c\u6ca1\u6709 B \u65b9\u5f0f\uff08\u89c6\u9891\u7f16\u8f91\uff09\u6f14\u5316
         "video_ref": None if i2v else cfg.get("video_ref"),
     }
+
+
+class _VramWatch:
+    """\u6e32\u67d3\u671f\u95f4\u8f6e\u8be2 ComfyUI /system_stats\uff0c\u8bb0\u5f55\u6700\u4f4e\u7a7a\u95f2\u663e\u5b58\u4e0e\u5185\u5b58\uff08\u5373\u5cf0\u503c\u5360\u7528\uff09\u3002
+
+    \u4e3a\u4ec0\u4e48\u4e0d\u7528 nvidia-smi\uff1a\u4f18\u5316\u5668\u8fde\u7684\u53ef\u80fd\u662f**\u53e6\u4e00\u53f0\u673a\u5668**\u4e0a\u7684 ComfyUI\uff0c
+    \u53ea\u6709 ComfyUI \u81ea\u5df1\u77e5\u9053\u90a3\u5757\u5361\u7684\u663e\u5b58\uff1b/system_stats \u662f\u8de8\u673a\u5668\u4e5f\u6210\u7acb\u7684\u53e3\u5f84\u3002
+
+    **\u5185\u5b58\u4e5f\u8981\u6d4b**\uff1aComfyUI \u7684"\u5378\u8f7d"\u662f\u628a\u6743\u91cd\u642c\u5230 offload_device\uff08CPU \u5185\u5b58\uff09\u800c\u4e0d\u662f\u91ca\u653e
+    \uff08\u6e90\u7801 `partially_unload(self.model.offload_device, \u2026)`\uff09\uff0c\u6240\u4ee5\u6e32\u67d3\u671f\u5185\u5b58\u4f1a\u88ab TE/\u6743\u91cd\u5360\u4f4f\u2014\u2014
+    \u5b9e\u6d4b\u8fd9\u4e00\u9879\u624d\u80fd\u5224\u65ad"\u80fd\u7528\u4f46\u4f1a\u6162"\u5230\u5e95\u8fd8\u5269\u591a\u5c11\u5185\u5b58\u53ef\u7528\u3002
+
+    \u8fd9\u4e9b\u6570\u5b57\u4f1a\u5199\u8fdb rundir/vram.json\uff0c\u5e76\u6c47\u603b\u8fdb optimizer_history.json\uff0c\u8ba9
+    core/mem_budget.py \u80fd\u6539\u7528"\u4f60\u81ea\u5df1\u8dd1\u51fa\u6765\u7684\u5b9e\u6d4b"\u6765\u4f30\u7b97\uff08\u672a\u6807\u5b9a\u65f6\u5b83\u523b\u610f\u4e0d\u7ed9\u7eff\u706f\uff09\u3002
+    """
+
+    def __init__(self, base, interval=2.0):
+        self.base = (base or "").rstrip("/")
+        self.interval = float(interval)
+        self.total_gb = None
+        self.min_free_gb = None
+        self.samples = 0
+        self.ram_total_gb = None
+        self.ram_free_start_gb = None
+        self.ram_free_min_gb = None
+        self._stop = threading.Event()
+        self._t = None
+
+    def _poll(self):
+        while not self._stop.is_set():
+            try:
+                with urllib.request.urlopen(self.base + "/system_stats", timeout=5) as r:
+                    st = json.load(r)
+                dev = (st.get("devices") or [{}])[0]
+                tot = float(dev.get("vram_total") or 0)
+                free = float(dev.get("vram_free") or 0)
+                if tot > 0:
+                    self.total_gb = tot / 2 ** 30
+                    f = free / 2 ** 30
+                    self.min_free_gb = f if self.min_free_gb is None else min(self.min_free_gb, f)
+                    self.samples += 1
+                info = st.get("system") or {}
+                if info.get("ram_total"):
+                    self.ram_total_gb = float(info["ram_total"]) / 2 ** 30
+                if info.get("ram_free"):
+                    rf = float(info["ram_free"]) / 2 ** 30
+                    if self.ram_free_start_gb is None:
+                        self.ram_free_start_gb = rf
+                    self.ram_free_min_gb = rf if self.ram_free_min_gb is None else min(self.ram_free_min_gb, rf)
+            except Exception:
+                pass
+            self._stop.wait(self.interval)
+
+    def __enter__(self):
+        self._t = threading.Thread(target=self._poll, daemon=True)
+        self._t.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._stop.set()
+        return False
+
+    @property
+    def peak_gb(self):
+        if self.total_gb is None or self.min_free_gb is None:
+            return None
+        return max(0.0, self.total_gb - self.min_free_gb)
+
+    @property
+    def ram_extra_gb(self):
+        """\u6e32\u67d3\u671f\u5185\u5b58\u989d\u5916\u5360\u7528\uff08\u8d77\u59cb\u7a7a\u95f2 \u2212 \u671f\u95f4\u6700\u4f4e\u7a7a\u95f2\uff09\uff1a\u542b"\u5378\u8f7d\u5230\u5185\u5b58"\u7684\u6743\u91cd\u3002"""
+        if self.ram_free_start_gb is None or self.ram_free_min_gb is None:
+            return None
+        return max(0.0, self.ram_free_start_gb - self.ram_free_min_gb)
 
 
 def render(gcfg, rundir):
@@ -127,9 +207,33 @@ def render(gcfg, rundir):
         print(f"  \u23f3 Ref2VA\uff08{gcfg.get('steps')} \u6b65 \u00b7 {gcfg.get('megapixels')}MP\uff09")
         graph = ra.make_graph(gcfg)
     print(f"  \u23f3 ComfyUI \u6e32\u67d3\u4e2d\uff08{rundir}\uff09\uff0c\u6b64\u6b65\u901a\u5e38\u9700\u8981\u6570\u5206\u949f\uff0c\u8bf7\u8010\u5fc3\u7b49\u5f85\u2026")
-    res = ra.submit_and_fetch(graph, rundir, timeout_s=7200)
+    try:
+        with _VramWatch(ra.get_comfy_url()) as vw:
+            res = ra.submit_and_fetch(graph, rundir, timeout_s=7200)
+        peak = vw.peak_gb
+        ram_extra = vw.ram_extra_gb
+        if peak is not None:
+            print("  \U0001f9e0 \u91c7\u6837\u671f\u663e\u5b58\u5cf0\u503c\u7ea6 %.1f GB / %.1f GB\uff08%d \u6b21\u91c7\u6837\uff09%s"
+                  % (peak, vw.total_gb or 0.0, vw.samples,
+                     ("\uff1b\u5185\u5b58\u989d\u5916\u5360\u7528\u7ea6 %.1f GB\uff08\u7a7a\u95f2 %.1f\u2192%.1f GB\uff09"
+                      % (ram_extra, vw.ram_free_start_gb or 0.0, vw.ram_free_min_gb or 0.0))
+                     if ram_extra is not None else ""))
+            print("     \uff08\u5df2\u8bb0\u5f55\uff0c\u4f9b\u663e\u5b58\u9884\u7b97\u6807\u5b9a\uff1b\u5378\u8f7d\u7684\u6743\u91cd\u662f\u642c\u5230\u5185\u5b58\u800c\u975e\u91ca\u653e\uff09")
+        try:
+            with open(os.path.join(rundir, "vram.json"), "w", encoding="utf-8") as f:
+                json.dump({"peak_gb": round(peak, 2) if peak is not None else None,
+                           "total_gb": round(vw.total_gb, 2) if vw.total_gb else None,
+                           "samples": vw.samples,
+                           "ram_extra_gb": round(ram_extra, 2) if ram_extra is not None else None,
+                           "ram_free_start_gb": round(vw.ram_free_start_gb, 2) if vw.ram_free_start_gb else None,
+                           "ram_free_min_gb": round(vw.ram_free_min_gb, 2) if vw.ram_free_min_gb else None,
+                           "ram_total_gb": round(vw.ram_total_gb, 2) if vw.ram_total_gb else None},
+                          f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
+    finally:
+        _stage_end("\u6e32\u67d3")
     vids = ra.extract_videos(res)
-    _stage_end("\u6e32\u67d3")
     return vids[0] if vids else None
 
 
@@ -284,15 +388,26 @@ def analyze_ref_audio(llm_audio, path, note=""):
 
 
 def evaluate(llm, video, story, prompt, rundir, n_frames=4, audio_llm=None,
-             use_audio=None, frame_width=768, frame_jpeg=False, target=None):
+             use_audio=None, frame_width=768, frame_jpeg=False, target=None,
+             duration=None):
     """\u8bc4\u5ba1\uff1a\u62bd\u5e27\u7ed9\u753b\u9762 LLM\u3002\u82e5 use_audio\uff0c\u5219\u5148\u97f3\u9891\u6a21\u578b\u542c\u58f0\u4ea7\u51fa\u5b9e\u6d4b\u8bc1\u636e\uff0c
-    \u5e76\u5165\u753b\u9762 LLM \u7684 prompt\uff0c\u8ba9\u5b83\u7edf\u4e00\u8bc4 audio_affordance \u4e0e overall\u3002"""
+    \u5e76\u5165\u753b\u9762 LLM \u7684 prompt\uff0c\u8ba9\u5b83\u7edf\u4e00\u8bc4 audio_affordance \u4e0e overall\u3002
+
+    \u957f\u89c6\u9891\uff08>15 \u79d2\uff09\uff1a\u989d\u5916\u7528 core/video_metrics.py \u7b97\u5ba2\u89c2\u6307\u6807\uff08\u5c3e\u90e8\u8fd0\u52a8\u8870\u51cf\u3001\u590d\u8bfb\u3001
+    \u8272\u5f69/\u5bf9\u6bd4\u5ea6\u4e0e\u97f3\u9891\u9000\u5316\uff09\uff0c\u6253\u5370\u5230\u65e5\u5fd7\u5e76\u4f5c\u4e3a\u5730\u9762\u771f\u76f8\u585e\u8fdb\u8bc4\u5ba1 prompt\u2014\u2014\u8fd9\u4e9b\u9000\u5316\u9760
+    N \u5f20\u5747\u5300\u62bd\u5e27\u662f\u770b\u4e0d\u89c1\u7684\uff0c\u5c24\u5176\u5c3e\u90e8\u3002"""
     _stage("\u8bc4\u5206")
     try:
         frames = ra.extract_frames(video, rundir, n_frames=n_frames,
                                    width=frame_width, as_jpeg=frame_jpeg)
         if not frames:
             return None
+        metrics_txt = ""
+        if ra.is_long_video(duration):
+            m = vm.analyze(video, duration)
+            metrics_txt = vm.format_report(m, vm.flags(m, duration), duration)
+            for line in metrics_txt.splitlines():
+                print("    " + line)
         cp = (
             f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n"
             + (f"# \u4f18\u5316\u76ee\u6807\uff08\u672c\u8f6e\u8981\u8fbe\u6210\u7684\u6838\u5fc3\uff0c\u8bc4\u5ba1\u987b\u4e25\u683c\u6838\u9a8c\u5176\u8fbe\u6210\u5ea6\uff09\n{target}\n\n" if target else "")
@@ -306,6 +421,9 @@ def evaluate(llm, video, story, prompt, rundir, n_frames=4, audio_llm=None,
                     "\u8bf7\u4f9d\u636e\u4e0a\u8ff0\u3010\u97f3\u9891\u5b9e\u6d4b\u8bc1\u636e\u3011\u6765\u8bc4 audio_affordance \u4e0e\u6d89\u53ca\u58f0\u97f3\u7684\u7ea6\u675f\u7ef4\u5ea6\uff0c"
                     "\u4e0d\u8981\u51ed\u7a7a\u731c\u6d4b\u58f0\u97f3\u662f\u5426\u7b26\u5408\u3002\n\n"
                 )
+        if metrics_txt:
+            cp += ("\n# \u5ba2\u89c2\u6307\u6807\uff08\u7531 ffmpeg \u9010\u79d2\u91c7\u6837\u7b97\u51fa\uff0c\u662f\u5730\u9762\u771f\u76f8\uff0c\u8bc4\u5ba1\u5224\u65ad\u4e0d\u5f97\u4e0e\u4e4b\u77db\u76fe\uff09\n"
+                   + metrics_txt + "\n" + ra.long_video_critic_addendum(duration))
         cp += f"\u4e0b\u9762 {n_frames} \u5f20\u5173\u952e\u5e27\u6765\u81ea\u8be5\u89c6\u9891\uff0c\u8bf7\u9010\u7ef4\u5ea6\u6253\u5206\u5e76\u7ed9\u51fa verdict \u4e0e gaps\u3002"
         imgs = [llm.encode_image(f) for f in frames]
         for attempt in range(1, 4):
@@ -370,7 +488,7 @@ def _save_variant(outdir, rel_dir, data):
         with open(os.path.join(d, "meta.json"), "w", encoding="utf-8") as f:
             json.dump({k: data.get(k) for k in ("phase", "index", "kind", "focus", "suggestion")},
                       f, ensure_ascii=False, indent=2)
-        print(f"    \u1f4be \u5df2\u843d\u76d8 {rel_dir}/(prompt.txt, script.json)")
+        print(f"    \U0001f4be \u5df2\u843d\u76d8 {rel_dir}/(prompt.txt, script.json)")
     except Exception as e:
         print(f"    \u26a0 \u843d\u76d8\u5931\u8d25: {str(e)[:80]}")
 
@@ -668,16 +786,45 @@ def run_attempt(llm, cand, story, cfg, outdir, label, seed, index, audio_llm=Non
     if not video:
         print(f"    \u2717 {label} \u65e0\u8f93\u51fa\uff0c\u8df3\u8fc7")
         return None
+    _dur = cfg.get("duration")
     critic = evaluate(llm, video, story, cand["prompt"], rd,
                       audio_llm=audio_llm, use_audio=use_audio,
-                      n_frames=int(cfg.get("review_frames", 32)),
+                      n_frames=ra.review_frame_count(_dur, cfg.get("review_frames", 32)),
                       frame_width=int(cfg.get("review_frame_width", 448)),
                       frame_jpeg=bool(cfg.get("review_frame_jpeg", True)),
-                      target=cfg.get("optimize_target"))
+                      target=cfg.get("optimize_target"),
+                      duration=_dur)
     sc = score_of(critic)
     rec = {**cand, "label": label, "index": index, "video": video, "critic": critic, "score": sc}
+    try:                                   # render() \u671f\u95f4\u8bb0\u5f55\u7684\u663e\u5b58/\u5185\u5b58\u5360\u7528\uff0c\u4f9b\u663e\u5b58\u9884\u7b97\u6807\u5b9a
+        with open(os.path.join(rd, "vram.json"), encoding="utf-8") as f:
+            _vm = json.load(f)
+        if _vm.get("peak_gb"):
+            rec["vram_peak_gb"] = _vm["peak_gb"]
+        if _vm.get("ram_extra_gb"):
+            rec["ram_extra_gb"] = _vm["ram_extra_gb"]
+    except Exception:
+        pass
     _report(rec)
     return rec
+
+
+def _host_mem():
+    """\u5c3d\u529b\u4ece ComfyUI \u53d6 (\u663e\u5361\u6807\u79f0\u663e\u5b58 GB, \u7cfb\u7edf\u53ef\u7528\u5185\u5b58 GB)\uff1b\u53d6\u4e0d\u5230\u8fd4\u56de (24.0, None)\u3002
+
+    \u5185\u5b58\u4e5f\u8981\uff1aComfyUI \u5378\u8f7d\u6743\u91cd\u662f\u5378\u5230\u5185\u5b58\uff0c\u5224\u5b9a"\u80fd\u7528\u4f46\u4f1a\u6162"\u5fc5\u987b\u77e5\u9053\u5185\u5b58\u6709\u591a\u5c11\u3002
+    """
+    try:
+        with urllib.request.urlopen(ra.get_comfy_url().rstrip("/") + "/system_stats", timeout=4) as r:
+            st = json.load(r)
+        dev = (st.get("devices") or [{}])[0]
+        tot = float(dev.get("vram_total") or 0)
+        info = st.get("system") or {}
+        ram = float(info.get("ram_free") or 0)
+        return (round(tot / 2 ** 30, 1) if tot else 24.0,
+                round(ram / 2 ** 30, 1) if ram else None)
+    except Exception:
+        return 24.0, None
 
 
 # ============================================================ \u4e3b\u6d41\u7a0b
@@ -700,8 +847,50 @@ def run_optimizer(cfg, llm):
     threshold = cfg.get("threshold")                          # \u65e9\u671f\u8fbe\u6807\u7ebf(\u53ef\u9009)
     manual = (cfg.get("stop_mode") or "auto") == "manual"
 
+    # ---- \u8fd0\u884c\u5143\u6570\u636e\uff1a\u6a21\u578b/\u753b\u5e45/\u65f6\u957f/\u6b65\u6570/token \u2014\u2014 \u5199\u8fdb history\uff0c\u4f9b\u663e\u5b58\u9884\u7b97\u6807\u5b9a ----
+    run_meta = {
+        "model": cfg.get("model"), "megapixels": cfg.get("megapixels"),
+        "aspect": normalize_aspect(cfg.get("aspect")), "duration": cfg.get("duration"),
+        "steps": cfg.get("steps"), "weight_dtype": cfg.get("weight_dtype"),
+        "ref_image_size": cfg.get("ref_image_size"), "flow": _flow(cfg),
+        "loras": [l.get("name") for l in (cfg.get("loras") or [])],
+    }
+    try:
+        _f, _lt, _tk = mb.tokens_of(cfg.get("duration"), cfg.get("megapixels"))
+        run_meta.update({"frames": _f, "latent_t": _lt, "tokens": _tk})
+    except Exception:
+        pass
+    # ---- \u628a"\u5f00\u8dd1\u524d\u7684\u9884\u7b97\u9884\u6d4b"\u4e5f\u8bb0\u8fdb history\uff1a\u5426\u5219\u4e8b\u540e\u65e0\u6cd5\u5224\u65ad\u4f30\u5f97\u51c6\u4e0d\u51c6\uff08\u6d4b\u8bd5\u529f\u80fd\u9700\u8981\u8fd9\u4e2a\u95ed\u73af\uff09----
+    _pred, _ram_free = None, None
+    try:
+        _card, _ram_free = _host_mem()
+        _mgb, _msrc = (None, None)
+        if cfg.get("model"):
+            _base = ra.get_comfy_url()
+            _mgb, _msrc = mb.fetch_model_size_gb(_base, cfg.get("model"))
+        _cgb = None
+        if cfg.get("clip"):
+            _cgb, _ = mb.fetch_model_size_gb(ra.get_comfy_url(), cfg.get("clip"),
+                                             folders=("text_encoders", "clip"))
+        _pred = mb.estimate(cfg.get("duration"), cfg.get("megapixels"), card_gb=_card,
+                            model=cfg.get("model"), model_gb=_mgb, size_source=_msrc,
+                            clip=cfg.get("clip"), clip_gb=_cgb)
+        _bl = mb.budget_lines(_pred, _ram_free)
+        run_meta["budget_pred"] = {k: _pred.get(k) for k in
+                                   ("frames", "tokens", "card_gb", "usable_gb",
+                                    "est_peak_lo_gb", "est_peak_gb", "peak_range_gb",
+                                    "peak_verdict", "token_verdict", "source",
+                                    "max_duration_s_at_this_mp", "max_megapixels_at_this_duration")}
+        run_meta["budget_pred"]["model_profile"] = _pred.get("model_profile") or {}
+        run_meta["budget_pred"]["lower_bound"] = _pred.get("lower_bound")
+        run_meta["budget_pred"]["effect"] = _bl["effect"]
+        run_meta["budget_pred"]["need_gb"] = _bl["need_gb"]
+        run_meta["budget_pred"]["ram_free_gb"] = _ram_free
+    except Exception:
+        pass
+
     print("=" * 60)
-    print("\u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71 \u00b7 \u51c6\u5165\u2192\u6f14\u8fdb\uff09")
+    print("MiniMAX H3 Ref2VA/I2VA \u89c6\u9891\u8d28\u91cf\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71 \u00b7 \u51c6\u5165\u2192\u6f14\u8fdb\uff09")
     print(f"\u6d41\u7a0b     : {'I2VA \u00b7 \u9996\u5e27\u56fe\u751f\u89c6\u9891\uff08\u82f1\u6587\u63d0\u793a\u8bcd\uff1a\u9996\u5e27\u58f0\u660e + \u4e09\u5b57\u6bb5\uff09' if i2v else 'Ref2VA \u00b7 \u53c2\u8003\u56fe/\u89c6\u9891\uff08\u516d\u6bb5\u82f1\u6587\uff09'}")
     print(f"\u670d\u52a1\u5668   : {ra.get_comfy_url()}")
     print(f"\u5199\u5165/\u8bc4\u5206 LLM: {getattr(llm, 'base', '?')}  /  {getattr(llm, 'model', '?')}")
@@ -716,7 +905,23 @@ def run_optimizer(cfg, llm):
         print(f"\u6e32\u67d3     : \u5feb\u901f\uff08\u5206\u8fa8\u7387 {cfg.get('megapixels')}\u2192{_qmp}MP\uff0c\u6b65\u6570 {cfg.get('steps')}\u2192{_qst}\uff09")
     else:
         print("\u6e32\u67d3     : \u7cbe\u6e32\uff08\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570\uff09")
-    print(f"\u89c6\u9891     : {_qmp}MP {normalize_aspect(cfg.get('aspect'))} {cfg.get('duration')}s")
+    _dur = cfg.get("duration")
+    _fr = ra.expected_frames(_dur)
+    if ra.is_long_video(_dur):
+        print(f"\u89c6\u9891     : {_qmp}MP {normalize_aspect(cfg.get('aspect'))} {_dur}s"
+              f"\uff08\u957f\u89c6\u9891\u5206\u652f\uff1a\u5b9e\u9645\u63d0\u4ea4 {_fr} \u5e27 \u2248 {(_fr or 0) / 24:.1f}s\uff1b\u63d0\u793a\u8bcd\u4e0e\u8bc4\u5ba1\u6309\u957f\u89c6\u9891\u89c4\u5219\uff09")
+    else:
+        print(f"\u89c6\u9891     : {_qmp}MP {normalize_aspect(cfg.get('aspect'))} {_dur}s"
+              f"\uff08\u63d0\u4ea4\u7ea6 {_fr} \u5e27\uff0c\u8bad\u7ec3\u8303\u56f4\u5185\uff09")
+    # ---- \u663e\u5b58/\u65f6\u957f\u9884\u7b97\uff1a\u4e94\u6bb5\u5f0f\uff08DiT / TE / Token / \u5378\u8f7d TE \u540e\u7684\u5360\u7528 / \u9884\u8ba1\u4f7f\u7528\u6548\u679c\uff09----
+    if _pred is not None:
+        try:
+            _bl = mb.budget_lines(_pred, _ram_free)
+            print(f"\u9884\u8ba1\u4f7f\u7528\u6548\u679c: {_bl['effect']} \u2014\u2014 {_bl['why']}")
+            for _l in _bl["lines"]:
+                print(f"  {_l['label']}\uff1a{_l['value']}")
+        except Exception:
+            pass
     print(f"\u79cd\u5b50     : {seed}\uff08\u5168\u7a0b\u6052\u5b9a\uff09| \u51c6\u5165\u7ebf\u2265{admission} | \u8fed\u4ee3\u4e0a\u9650 {max_iter} | \u540c\u57fa\u7ebf\u8010\u5fc3 {base_patience}")
     print("=" * 60)
 
@@ -745,13 +950,13 @@ def run_optimizer(cfg, llm):
             audio_llm = LLM(model=cfg.get("audio_llm_model") or None,
                             base=cfg.get("audio_llm_base") or None,
                             api_key=cfg.get("audio_llm_api_key") or None)
-            print("\u1f3a7 \u97f3\u9891\u901a\u9053\u5f00\u542f\uff1a" + "\uff0c".join(
+            print("\U0001f3a7 \u97f3\u9891\u901a\u9053\u5f00\u542f\uff1a" + "\uff0c".join(
                 [s for s in ["\u6d89\u58f0\u8bc4\u5ba1" if use_audio else "", "\u53c2\u8003\u97f3\u9891\u5206\u6790" if has_ref_audio else ""] if s]))
         except Exception as e:
             print(f"    \u26a0 \u97f3\u9891 LLM \u5b9e\u4f8b\u5316\u5931\u8d25\uff0c\u5173\u95ed\u97f3\u9891\u901a\u9053: {str(e)[:80]}")
             audio_llm = None
     else:
-        print("\u1f507 \u97f3\u9891\u901a\u9053\u5173\u95ed\uff1a\u4e0d\u6d89\u58f0\u3001\u65e0\u53c2\u8003\u97f3\u9891\uff0c\u6216\u672a\u914d\u7f6e\u97f3\u9891 LLM")
+        print("\U0001f507 \u97f3\u9891\u901a\u9053\u5173\u95ed\uff1a\u4e0d\u6d89\u58f0\u3001\u65e0\u53c2\u8003\u97f3\u9891\uff0c\u6216\u672a\u914d\u7f6e\u97f3\u9891 LLM")
 
     # ---- \u53c2\u8003\u97f3\u9891\uff1a\u4ea4\u7ed9\u97f3\u9891 LLM \u542c\u58f0\uff0c\u628a\u300c\u7528\u9014 + \u58f0\u97f3\u7279\u5f81\u300d\u5199\u5165\u63d0\u793a\u8bcd\uff08\u4f9b\u5199\u5267\u672c/\u8f6c\u8bd1\u8fd8\u539f\uff09 ----
     if has_ref_audio and audio_llm is not None and not cfg.get("_aud_ref_desc"):
@@ -809,7 +1014,7 @@ def run_optimizer(cfg, llm):
         attempts.append(rec)
         if rec["score"] is not None and rec["score"] >= admission:
             champion = rec
-            print(f"\n  \u1f3af \u51c6\u5165\u8fbe\u6807! overall={champion['score']} \u2265 {admission}\uff0c\u6210\u4e3a\u722c\u5c71\u57fa\u51c6")
+            print(f"\n  \U0001f3af \u51c6\u5165\u8fbe\u6807! overall={champion['score']} \u2265 {admission}\uff0c\u6210\u4e3a\u722c\u5c71\u57fa\u51c6")
         elif rec["score"] is None:
             print("    \u2192 \u65e0\u6709\u6548\u8bc4\u5206\uff0c\u7ee7\u7eed\u91cd\u5199\u2026")
         else:
@@ -819,7 +1024,7 @@ def run_optimizer(cfg, llm):
 
     if champion is None:
         print(f"\n\u2717 \u672a\u80fd\u5728\u9884\u7b97\u5185\u8fc7\u51c6\u5165\u7ebf\uff0c\u7ec8\u6b62\u3002\u539f\u56e0: {stop_reason}")
-        _finalize(outdir, champion, attempts, seed, stop_reason)
+        _finalize(outdir, champion, attempts, seed, stop_reason, run_meta)
         return None
 
     # ================= \u722c\u5c71 =================
@@ -848,7 +1053,7 @@ def run_optimizer(cfg, llm):
         hill_no += 1
         iteration += 1
         suggestion = ask_suggestion(llm, story, champion, cfg, tried_txt)
-        print(f"\n  \u1f4a1 \u5efa\u8bae: {suggestion}")
+        print(f"\n  \U0001f4a1 \u5efa\u8bae: {suggestion}")
         cand = gen_child(llm, story, champion, cfg, suggestion)
         label = f"hill{hill_no:02d}"
         if video_edit:
@@ -866,7 +1071,7 @@ def run_optimizer(cfg, llm):
             rec["_improved"] = True
             rec["_base_score"] = cur
             champion = rec
-            print(f"\n  \u1f3c6 \u91c7\u7eb3\u65b0\u6700\u4f18! overall={sc}\uff08\u8f83 {cur} +{sc - cur:.2f}\uff09\u2192 \u7ee7\u7eed\u5f80\u524d\u722c")
+            print(f"\n  \U0001f3c6 \u91c7\u7eb3\u65b0\u6700\u4f18! overall={sc}\uff08\u8f83 {cur} +{sc - cur:.2f}\uff09\u2192 \u7ee7\u7eed\u5f80\u524d\u722c")
         elif sc is None:
             rec["_base_score"] = cur
             print("    \u2192 \u65e0\u6709\u6548\u8bc4\u5206\uff0c\u9000\u56de\u5f53\u524d\u6700\u4f18\u6362\u65b9\u5411\u518d\u8bd5\u2026")
@@ -901,11 +1106,11 @@ def run_optimizer(cfg, llm):
             print("  \u26a0 \u7cbe\u7ec6\u6e32\u67d3\u65e0\u8f93\u51fa\uff0c\u56de\u9000\u4f7f\u7528\u5feb\u901f\u6e32\u67d3\u7248")
 
     # ================= \u6c47\u603b / \u843d\u76d8 =================
-    _finalize(outdir, champion, attempts, seed, stop_reason)
+    _finalize(outdir, champion, attempts, seed, stop_reason, run_meta)
     return champion
 
 
-def _finalize(outdir, champion, attempts, seed, stop_reason):
+def _finalize(outdir, champion, attempts, seed, stop_reason, run_meta=None):
     print("\n" + "=" * 60)
     if champion is None:
         print("\u3010\u4f18\u5316\u7ed3\u675f\u3011\u65e0\u8fbe\u6807\u57fa\u51c6")
@@ -931,16 +1136,21 @@ def _finalize(outdir, champion, attempts, seed, stop_reason):
         json.dump({
             "stop_reason": stop_reason,
             "seed": seed,
+            # run\uff1a\u672c\u6b21\u8fd0\u884c\u7684\u6a21\u578b/\u753b\u5e45/\u65f6\u957f/\u6b65\u6570\u4e0e token \u6570 \u2014\u2014 \u4f9b core/mem_budget.py \u6807\u5b9a\u663e\u5b58\u9884\u7b97
+            "run": run_meta or {},
             "champion": {
                 "label": champion["label"], "score": champion["score"],
                 "video": champion["video"],
                 "video_fine": champion.get("video_fine"),
                 "verdict": (champion.get("critic") or {}).get("verdict"),
+                "vram_peak_gb": champion.get("vram_peak_gb"),
             },
             "attempts": [{
                 "label": a["label"], "kind": a.get("kind"), "score": a["score"],
                 "video": a["video"], "verdict": (a.get("critic") or {}).get("verdict"),
                 "prompt_len": len(a["prompt"]),
+                "vram_peak_gb": a.get("vram_peak_gb"),
+                "ram_extra_gb": a.get("ram_extra_gb"),
             } for a in attempts],
         }, f, ensure_ascii=False, indent=2)
     print(f"\n\u2705 \u5df2\u5bfc\u51fa:")
@@ -957,6 +1167,11 @@ def load_config(path):
     c.setdefault("audios", [])
     c.setdefault("model", None)
     c.setdefault("clip", None)             # CLIP \u6a21\u578b\u540d\uff08ComfyUI \u5185\u540d\u5b57\uff0c\u542b\u5b50\u76ee\u5f55\uff1b\u7a7a=\u7528\u6a21\u677f\u9ed8\u8ba4/\u524d\u6b21\u6210\u529f\uff09
+    c.setdefault("weight_dtype", "default")  # UNETLoader \u6743\u91cd\u7cbe\u5ea6\uff1adefault/fp8_e4m3fn/fp8_e4m3fn_fast/fp8_e5m2
+    #                                          \uff08\u4ec5 safetensors \u751f\u6548\uff1bGGUF \u4f1a\u88ab\u5ffd\u7565\u5e76\u544a\u8b66\uff09
+    c.setdefault("ref_image_size", "match")   # \u53c2\u8003\u56fe\u5c3a\u5bf8\u7b56\u7565\uff1amatch=\u6309\u751f\u6210\u753b\u5e45\u7f29\u653e\uff08\u7701 token\uff09\uff1b
+    #                                          max=\u53c2\u8003\u7ba1\u7ebf 2048 \u77ed\u8fb9\uff08\u8eab\u4efd\u6700\u51c6\uff0c\u4f46\u53c2\u8003 token \u5168\u7a0b\u53c2\u4e0e\uff0c
+    #                                          \u663e\u5b58\u4e0e\u8017\u65f6\u53ef\u80fd\u7ffb\u51e0\u500d\uff09
     c.setdefault("loras", [])              # LoRA \u5217\u8868 [{"name":..., "strength":...}]\uff1b\u7a7a=\u4e0d\u52a0 LoRA
     c.setdefault("lora", None)             # \u517c\u5bb9\u65e7\u5355 LoRA \u5b57\u6bb5\uff1b\u4e00\u822c\u7528\u4e0a\u9762\u7684 loras \u5217\u8868
     c.setdefault("lora_strength", 1.0)
@@ -967,6 +1182,16 @@ def load_config(path):
     c.setdefault("megapixels", 0.4)
     c.setdefault("aspect", "4:3 (Standard)")
     c.setdefault("duration", 10)
+    # ---- \u65f6\u957f\u786c\u6821\u9a8c\uff082.0\uff1a\u4e0a\u9650 60 \u79d2\uff09----
+    # \u8d85\u8fc7\u4e0a\u9650\u5fc5\u987b\u663e\u5f0f\u5931\u8d25\uff1a\u9759\u9ed8\u5939\u53d6\u4f1a\u8ba9\u7528\u6237\u4ee5\u4e3a"\u8bbe\u4e86 120 \u79d2\u5374\u6e32\u4e86 60 \u79d2"\uff0c
+    # \u800c 60\u201390 \u79d2\u6b63\u662f\u5b9e\u6d4b\u7684\u8d28\u91cf\u62d0\u70b9\uff0c\u9000\u5316\u98ce\u9669\u8fdc\u5927\u4e8e\u6b64\u3002
+    _d, _err = ra.validate_duration(c["duration"])
+    if _err:
+        raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] " + _err)
+    c["duration"] = _d
+    # ---- \u53c2\u8003\u56fe\u5c3a\u5bf8\u7b56\u7565\uff08\u4ec5 Ref2VA \u751f\u6548\uff09----
+    if c["ref_image_size"] not in ("match", "max"):
+        raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] ref_image_size \u53ea\u80fd\u662f match \u6216 max\uff0c\u5f53\u524d\uff1a%r" % (c["ref_image_size"],))
     c.setdefault("video_edit", False)          # B \u65b9\u5f0f\uff1a\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u89c6\u9891\u4f5c\u5019\u9009\u53c2\u8003
     c.setdefault("quick_render", False)        # \u5feb\u901f\u6e32\u67d3\uff1a\u4ec5\u5206\u8fa8\u7387\u4e0e\u6b65\u6570 \u00d70.707\uff08\u5176\u4f59\u540c\u7cbe\u6e32\uff09
     c.setdefault("fine_render", True)          # \u7ed3\u675f\u7cbe\u6e32\uff1a\u722c\u5c71\u7ed3\u675f\u540e\u7528\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570\u518d\u6e32\u4e00\u6b21
@@ -1016,7 +1241,7 @@ def load_config(path):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Ref2VA \u63d0\u793a\u8bcd\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71\uff09")
+    p = argparse.ArgumentParser(description="MiniMAX H3 Ref2VA/I2VA \u89c6\u9891\u8d28\u91cf\u4f18\u5316\u5668\uff08\u987a\u5e8f\u722c\u5c71\uff09")
     p.add_argument("--config", required=True, help="\u914d\u7f6e\u6587\u4ef6\u8def\u5f84\uff08JSON\uff09")
     p.add_argument("--dry-run", action="store_true", help="\u53ea\u52a0\u8f7d\u914d\u7f6e\u5e76\u6253\u5370\uff0c\u4e0d\u6267\u884c")
     args = p.parse_args()

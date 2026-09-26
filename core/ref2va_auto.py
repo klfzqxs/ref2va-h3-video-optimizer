@@ -29,6 +29,106 @@ except Exception:
 MAX_REFS = 9          # MiniMax H3 ref2va \u4e0a\u9650
 MAX_AUDIOS = 3
 
+# ============================================================ \u65f6\u957f\u4e0a\u9650\uff082.0\uff1a15 \u79d2 \u2192 60 \u79d2\uff09
+# \u5b98\u65b9\u89c4\u683c\u4e0e\u8bad\u7ec3\u8303\u56f4\u662f ~5\u201315 \u79d2\uff0817k+5 \u7f51\u683c\u4e0a\u754c 362 \u5e27 = 15.08 \u79d2\uff09\uff0c\u8282\u70b9 length \u7684\u786c\u4e0a\u9650\u662f
+# 3600 \u5e27\uff08150 \u79d2\uff09\uff0c\u6ca1\u6709\u4efb\u4f55\u4ee3\u7801\u94b3\u5236\u3002\u672c\u9879\u76ee 2026-09 \u5728 512\u00b2/8 \u6b65\u4e0a\u5b9e\u6d4b\uff08D:\H3-longvideo\uff09\uff1a
+#   15\u201360 \u79d2\u8d28\u91cf\u7a33\u5b9a\u53ef\u7528\uff0c**60 \u79d2\u662f\u8d28\u91cf\u9ad8\u5cf0**\uff08\u5bf9\u6bd4\u5ea6 74.8\u3001\u573a\u666f\u6700\u4e30\u5bcc\uff09\uff1b
+#   90 \u79d2\u660e\u663e\u964d\u8d28\uff08\u51b7\u7070\u4f4e\u9971\u548c\u3001\u5bf9\u6bd4\u5ea6\u8170\u65a9\u5230 30\u3001\u97f3\u9891\u5f31 4 dB\u3001\u5f00\u5934\u573a\u666f\u5728\u540e\u6bb5\u91cd\u73b0\uff09\u3002
+# \u6545\u672c\u7248\u628a\u5355\u6b21\u751f\u6210\u4e0a\u9650\u62ac\u5230 60 \u79d2\uff0c\u5e76\u628a >15 \u79d2\u7edf\u4e00\u8d70"\u957f\u89c6\u9891"\u5206\u652f\uff08\u63d0\u793a\u8bcd\u4e0e\u68c0\u6d4b\u5404\u6362\u4e00\u5957\u89c4\u5219\uff09\u3002
+TRAINED_MAX_S = 15.0      # H3 \u8bad\u7ec3\u8303\u56f4\u5185\u7684\u4e0a\u754c\uff1b> \u6b64\u503c\u5373\u957f\u89c6\u9891
+MAX_DURATION_S = 60.0     # \u672c\u9879\u76ee\u5141\u8bb8\u7684\u5355\u6b21\u751f\u6210\u957f\u5ea6\u4e0a\u9650
+MIN_DURATION_S = 1.0
+
+
+def is_long_video(duration):
+    """\u662f\u5426\u6309\u957f\u89c6\u9891\u89c4\u5219\u5904\u7406\uff08\u8d85\u8fc7 H3 \u8bad\u7ec3\u8303\u56f4\uff09\u3002"""
+    try:
+        return float(duration) > TRAINED_MAX_S
+    except (TypeError, ValueError):
+        return False
+
+
+def validate_duration(duration):
+    """\u6821\u9a8c\u5e76\u89c4\u6574\u65f6\u957f\u3002\u8fd4\u56de (\u79d2, \u9519\u8bef\u4fe1\u606f\u6216 None)\u3002
+
+    \u4e0a\u9650\u662f\u786c\u68c0\u67e5\uff08\u4e0d\u505a\u9759\u9ed8\u5939\u53d6\uff09\uff1a\u8d85\u8fc7 60 \u79d2\u5fc5\u987b\u663e\u5f0f\u5931\u8d25\uff0c\u5426\u5219\u7528\u6237\u4f1a\u4ee5\u4e3a
+    "\u8bbe\u4e86 120 \u79d2\u5374\u6e32\u4e86 60 \u79d2"\uff0c\u800c\u5b9e\u9645\u9000\u5316\u98ce\u9669\u8fdc\u5927\u4e8e\u6b64\u3002
+    """
+    try:
+        d = float(duration)
+    except (TypeError, ValueError):
+        return None, "\u65f6\u957f\u5fc5\u987b\u662f\u6570\u5b57\uff08\u79d2\uff09\uff0c\u5f53\u524d\u503c\uff1a%r" % (duration,)
+    if d < MIN_DURATION_S:
+        return None, "\u65f6\u957f\u8fc7\u5c0f\uff1a%g \u79d2\uff08\u4e0b\u9650 %g \u79d2\uff09" % (d, MIN_DURATION_S)
+    if d > MAX_DURATION_S:
+        return None, ("\u5355\u6b21\u751f\u6210\u65f6\u957f\u4e0a\u9650 %g \u79d2\uff0c\u5f53\u524d %g \u79d2\u3002\u957f\u89c6\u9891\u5b9e\u6d4b\u8d28\u91cf\u62d0\u70b9\u5728 60\u201390 \u79d2\u4e4b\u95f4\uff0c"
+                      "60 \u79d2\u662f\u672c\u9879\u76ee\u5141\u8bb8\u7684\u4e0a\u9650\uff1b\u9700\u8981\u66f4\u957f\u8bf7\u5206\u4e24\u6bb5\u751f\u6210\u518d\u7528\u5c3e\u5e27\u7eed\u63a5\u3002" % (MAX_DURATION_S, d))
+    return d, None
+
+
+def expected_frames(duration):
+    """\u65f6\u957f \u2192 \u5b9e\u9645\u63d0\u4ea4\u5e27\u6570\uff08\u6a21\u677f\u6309 17k+5 \u7f51\u683c**\u5411\u4e0a**\u5438\u9644\uff09\u3002\u7528\u4e8e\u65e5\u5fd7\u4e0e\u6210\u672c\u63d0\u793a\u3002"""
+    try:
+        n = max(5, int(round(float(duration) * 24)))
+    except (TypeError, ValueError):
+        return None
+    return n + (5 - (n % 17)) % 17
+
+
+def _long_video_director_rules(d):
+    """\u957f\u89c6\u9891\uff08>15 \u79d2\uff09\u4e13\u7528\u7684\u5267\u4f5c\u89c4\u5219\u3002\u89c4\u5219\u7f16\u53f7\u63a5\u5728 system_director \u7684 1)\u20136) \u4e4b\u540e\u3002
+
+    \u6bcf\u6761\u90fd\u5bf9\u5e94\u4e00\u9879\u5b9e\u6d4b\u9000\u5316\uff0c\u4e0d\u662f\u6cdb\u6cdb\u7684"\u5199\u8be6\u7ec6\u70b9"\uff1a
+      \u5c3e\u90e8\u8fd0\u52a8\u8870\u51cf / \u5185\u5bb9\u590d\u8bfb\u7ed5\u56de\u5f00\u5934 / \u5149\u7167\u8272\u5f69\u6052\u5b9a / \u540e\u534a\u6bb5\u97f3\u9891\u53d8\u5f31\u3002
+    """
+    if not is_long_video(d):
+        return ""
+    lo = max(4, int(d // 8))
+    hi = max(lo + 2, int(round(d / 5.0)))
+    return (
+        f"**\u957f\u89c6\u9891\u6a21\u5f0f\uff08\u76ee\u6807 {d:g} \u79d2\uff0c\u5df2\u8d85\u51fa H3 \u8bad\u7ec3\u8303\u56f4 ~5\u201315 \u79d2\uff0c\u5fc5\u987b\u6309\u4e0b\u5217\u7ea6\u675f\u5199\uff09**\uff1a\n"
+        f"7) \u62cd\u6570\uff1a\u672c\u7247\u9700\u8981 **{lo}\u2013{hi} \u62cd**\uff0c\u6bcf\u62cd 4\u20138 \u79d2\u3002\u62cd\u6570\u592a\u5c11\u4f1a\u8ba9\u6a21\u578b\u5728\u540e\u6bb5\u91cd\u590d\u5f00\u5934"
+        "\uff08\u5b9e\u6d4b\u957f\u7247\u6bb5\u4f1a\u5728\u672b\u5c3e\u7ed5\u56de\u8d77\u70b9\uff0c\u56e0\u4e3a\u63d0\u793a\u8bcd\u7ed9\u4e0d\u51fa\u8db3\u591f\u7684\u65b0\u5185\u5bb9\uff09\u3002\n"
+        "8) \u8fd0\u52a8\u94fa\u6ee1\u5168\u7247\uff08\u672c\u6a21\u5f0f\u6700\u91cd\u8981\u7684\u4e00\u6761\uff09\uff1a**\u6bcf\u4e00\u62cd\u90fd\u5fc5\u987b\u6709\u53ef\u89c1\u7684\u6301\u7eed\u8fd0\u52a8**"
+        "\uff08\u4e3b\u4f53\u4f4d\u79fb / \u955c\u5934\u8fd0\u52a8 / \u73af\u5883\u52a8\u6001\u81f3\u5c11\u5176\u4e00\uff09\uff0c\u7981\u6b62\u4efb\u4f55\u4e00\u62cd\u5199\u6210\u9759\u6001\u3001\u505c\u987f\u3001\u7b49\u5f85\u6216"
+        "\"\u5b9a\u683c\u6536\u5c3e\"\u3002\u5b9e\u6d4b\uff1a\u540c\u4e00\u6a21\u578b\u540c\u4e00\u957f\u5ea6\u4e0b\uff0c\u628a\u4e8b\u4ef6\u96c6\u4e2d\u5728\u524d\u534a\u6bb5\u4f1a\u8ba9\u5c3e\u90e8\u8fd0\u52a8\u8870\u51cf\u4e00\u534a\u4ee5\u4e0a"
+        "\uff08\u5c3e/\u5747 0.46 vs 0.55\u20130.94\uff09\u3002\n"
+        "9) \u65b0\u5185\u5bb9\u5747\u644a\u5230\u5168\u7247\uff1a\u65b0\u573a\u666f\u3001\u65b0\u52a8\u4f5c\u3001\u65b0\u5149\u4f4d\u8981\u5747\u5300\u5206\u5e03\u5230\u6bcf\u4e00\u62cd\uff0c\u6700\u540e\u4e00\u62cd\u4ecd\u8981\u6709\u65b0\u7684\u53ef\u89c1\u53d8\u5316\uff1b"
+        "\u4e0d\u8981\u628a\u91cd\u5934\u620f\u538b\u5728\u524d 1/3\u3002\n"
+        "10) \u5149\u7167\u4e0e\u8272\u5f69\u5199\u6210\u8d2f\u7a7f\u5168\u7a0b\u7684\u8fde\u7eed\u6f14\u53d8\uff1a\u660e\u786e\u5199\u51fa\u5404\u9636\u6bb5\u7684\u5149\u4f4d\u3001\u8272\u6e29\u3001\u660e\u6697\u5982\u4f55\u968f\u65f6\u95f4\u53d8\u5316\u3002"
+        "\u957f\u7247\u6bb5\u82e5\u4e0d\u7ed9\u6f14\u53d8\uff0c\u6a21\u578b\u4f1a\u8ba9\u5168\u7247\u8272\u8c03\u8d8b\u4e8e\u6052\u5b9a\u3001\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1\uff08\u5b9e\u6d4b 90 \u79d2\u6863\u5bf9\u6bd4\u5ea6\u4ece 75 \u6389\u5230 30\uff09\u3002\n"
+        "11) \u5355\u4e00\u8fde\u7eed\u955c\u5934\uff1a\u4fdd\u6301\u4e00\u6b21\u8fde\u7eed\u62cd\u6444\uff08\u5141\u8bb8\u955c\u5934\u8fd0\u52a8\u4e0e\u573a\u666f\u6f14\u8fdb\uff09\uff0c\u4e0d\u8981\u5199\u6210\u786c\u5207\u5206\u955c\uff1b"
+        "\u82e5\u786e\u9700\u5207\u6362\uff0c\u5207\u70b9\u6240\u5728\u90a3\u4e00\u62cd\u540c\u6837\u8981\u6709\u8fd0\u52a8\uff0c\u5e76\u5199\u660e\u5207\u6362\u524d\u540e\u4fdd\u6301\u4e00\u81f4\u7684\u5143\u7d20\u3002\n"
+        "12) \u58f0\u97f3\u8d2f\u7a7f\u5230\u6700\u540e\u4e00\u62cd\uff1a\u6bcf\u4e00\u62cd\u7684 audio_note \u90fd\u8981\u5199\uff0c\u4e14\u6700\u540e\u4e00\u62cd\u5fc5\u987b\u6709\u660e\u786e\u4ecd\u5728\u6301\u7eed\u7684\u58f0\u97f3\uff1b"
+        "\u957f\u7247\u6bb5\u7684\u5e38\u89c1\u9000\u5316\u662f\u540e\u534a\u6bb5\u97f3\u9891\u53d8\u5f31\u751a\u81f3\u8fd1\u4e4e\u9759\u97f3\u3002\n"
+    )
+
+
+def _long_video_i2va_rules(d):
+    """I2VA \u957f\u89c6\u9891\u8865\u5145\u89c4\u5219\uff08\u82f1\u6587\u63d0\u793a\u8bcd\uff0c\u6545\u6b64\u5904\u4e5f\u5199\u6210\u82f1\u6587\uff0c\u4fbf\u4e8e\u683c\u5f0f\u5e08\u76f4\u63a5\u5185\u5316\uff09\u3002"""
+    if not is_long_video(d):
+        return ""
+    lo = max(4, int(d // 8))
+    hi = max(lo + 2, int(round(d / 5.0)))
+    return (
+        f"- LONG VIDEO MODE (target {d:g} s, beyond the model's trained 5-15 s range):\n"
+        f"  * Budget {lo}-{hi} beats of 4-8 seconds each; never concentrate the important "
+        "action in the first third.\n"
+        "  * **Keep visible motion running in EVERY beat** (subject displacement, camera "
+        "movement or environmental dynamics). Never write a static, waiting or frozen beat; "
+        "measured long takes lose more than half of their tail motion when events run out early.\n"
+        "  * Spread NEW information (new space, new action, new light) across the whole "
+        "duration so the model has no reason to loop back to the opening.\n"
+        "  * Write lighting and colour as a continuous process evolving across the entire "
+        "duration (position of light, colour temperature, contrast) - long takes otherwise "
+        "drift to one flat, desaturated look.\n"
+        "  * Describe the soundscape so that it is still present in the final beat; long "
+        "generations typically fade the audio out in the second half.\n"
+        "  * Prefer one continuous take with camera movement over hard cuts; if a cut is "
+        "required, give the beat a clear motion across it.\n"
+    )
+
+
 
 def _strip_placeholder_refs(graph, ref_node):
     """\u5220\u9664\u6a21\u677f\u9ed8\u8ba4\u7684 LoadImage/LoadAudio \u8282\u70b9\u5e76\u6e05\u7a7a ref_node \u7684 ref_* \u94fe\u63a5\u3002
@@ -69,6 +169,38 @@ def _apply_lora(graph, cfg, unet_id="127"):
             continue
         if (node.get("inputs") or {}).get("model") == [unet_id, 0]:
             node["inputs"]["model"] = [prev, 0]
+
+
+def _set_unet_node(graph, nid, cfg):
+    """\u628a cfg \u7684 model / weight_dtype \u5199\u8fdb\u6307\u5b9a\u7684 UNET \u52a0\u8f7d\u8282\u70b9\uff08\u4e24\u6761\u6d41\u7a0b\u5171\u7528\uff0c\u907f\u514d\u5efa\u56fe\u903b\u8f91\u518d\u6b21\u5404\u6f02\u5404\u7684\uff09\u3002
+
+    **.gguf \u5fc5\u987b\u6574\u4f53\u6362\u6210 UnetLoaderGGUF**\uff1a\u6838\u5fc3 UNETLoader \u7ecf comfy.utils.load_torch_file
+    \u53ea\u6309\u6269\u5c55\u540d\u5206\u6d41\uff0c\u975e .safetensors/.sft \u4e00\u5f8b\u4e22\u7ed9 torch.load\uff0c\u9047\u5230 .gguf \u76f4\u63a5\u629b
+    UnpicklingError\uff08\u62a5\u9519\u91cc\u90a3\u53e5 PyTorch weights_only \u63d0\u793a\u662f\u8bef\u5bfc\uff0c\u6362\u5f00\u5173\u6ca1\u7528\uff09\u3002
+    UnetLoaderGGUF \u7684 INPUT_TYPES \u6ca1\u6709 weight_dtype\uff0c\u6545 gguf \u5206\u652f\u6574\u4f53\u66ff\u6362 inputs\u3002
+    nid\uff1aref2va \u5de5\u4f5c\u6d41\u4e3a "127"\uff1bI2V \u5de5\u4f5c\u6d41\u4e3a "105:6"\u3002
+    \u672a\u7ed9 model \u65f6\u4fdd\u7559\u6a21\u677f\u9ed8\u8ba4\uff0c\u4f46\u6a21\u677f\u9ed8\u8ba4\u540d\u672c\u8eab\u5c31\u662f .gguf \u7684\u540c\u6837\u8981\u6362\u52a0\u8f7d\u5668\u3002
+    """
+    if nid not in graph:
+        return
+    node = graph[nid]
+    inputs = node.setdefault("inputs", {})
+    model = cfg.get("model") or inputs.get("unet_name")
+    if model and str(model).lower().endswith(".gguf"):
+        wd = str(cfg.get("weight_dtype") or "").strip()
+        if wd and wd.lower() != "default":
+            print(f"[warn] \u5df2\u5ffd\u7565 weight_dtype={wd}\uff1aGGUF \u8d70 UnetLoaderGGUF\uff0c"
+                  f"\u8be5\u8282\u70b9\u6ca1\u6709\u8fd9\u4e2a\u8f93\u5165\uff08\u7cbe\u5ea6\u7531 gguf \u6587\u4ef6\u81ea\u5e26\u7684\u91cf\u5316\u7c7b\u578b\u51b3\u5b9a\uff09", file=sys.stderr)
+        node["class_type"] = "UnetLoaderGGUF"
+        node["inputs"] = {"unet_name": model}
+        return
+    # \u975e GGUF\uff1a\u6838\u5fc3 UNETLoader \u624d\u80fd\u8bfb safetensors
+    node["class_type"] = "UNETLoader"
+    if cfg.get("model"):
+        inputs["unet_name"] = cfg["model"]
+    if cfg.get("weight_dtype"):
+        inputs["weight_dtype"] = cfg["weight_dtype"]
+
 
 # ---- ComfyUI \u76ee\u6807\u670d\u52a1\u5668\uff08\u53ef\u9009\uff0c\u9ed8\u8ba4\u8d70 COMFYUI_URL \u73af\u5883\u53d8\u91cf / \u672c\u673a 127.0.0.1:8000\uff09----
 import urllib.error
@@ -133,7 +265,8 @@ def system_director(duration):
         "5) audio_note \u5177\u4f53\u5316\uff1a\u7ed1\u5b9a\u5b9e\u9645\u53d1\u58f0\u8005\uff0c\u6309\u201c\u97f3\u8272\u2192\u8282\u594f/\u901f\u5ea6\u2192\u5f3a\u5f31\u2192\u547c\u5438\u201d\u5199\u6e05\u58f0\u97f3\u6f14\u53d8\u8f68\u8ff9\uff0c"
         "\u4e0d\u53ea\u7ed9\u201c\u538b\u6291/\u66a7\u6627\u201d\u8fd9\u7c7b\u60c5\u7eea\u6807\u7b7e\u3002\n"
         f"6) \u65f6\u957f\u786c\u5bf9\u9f50\uff1a\u5404\u62cd duration_s \u4e4b\u548c\u6052\u7b49\u4e8e {d:g} \u79d2\u3002\n"
-        "\u53ea\u8f93\u51fa JSON\u3002"
+        + _long_video_director_rules(d)
+        + "\u53ea\u8f93\u51fa JSON\u3002"
     )
 
 SYSTEM_FORMATTER = (
@@ -262,7 +395,8 @@ def system_i2va(duration):
         "## HARD REQUIREMENTS\n"
         f"- Total effective duration = {d:g} seconds; every timeline point must fall "
         f"within 0 - {d:.2f} seconds.\n"
-        "- Keep character identity, clothing, colors, key objects and spatial "
+        + _long_video_i2va_rules(d)
+        + "- Keep character identity, clothing, colors, key objects and spatial "
         "relationships consistent with <Picture 1> throughout.\n"
         "- Prefer positive, observable descriptions over negative prohibitions (write "
         "`both forearms stay flat on the table, palms down` rather than `do not cross "
@@ -598,20 +732,12 @@ def make_graph(cfg):
         graph[lid] = {"class_type": "LoadAudio", "inputs": {"audio": name}}
         n[f"ref_audios.ref_audio_{i}"] = [lid, 0]
 
-    # --- \u6a21\u578b\u53d8\u4f53\uff08\u7f3a\u7701\u4fdd\u7559\u6a21\u677f\u9ed8\u8ba4\uff09 ---
-    model = cfg.get("model")
-    node127 = graph["127"]
-    if model:
-        if str(model).lower().endswith(".gguf"):
-            node127["class_type"] = "UnetLoaderGGUF"
-            node127["inputs"] = {"unet_name": model}
-        else:
-            node127["class_type"] = "UNETLoader"
-            node127["inputs"]["unet_name"] = model
-            if cfg.get("weight_dtype"):
-                node127["inputs"]["weight_dtype"] = cfg["weight_dtype"]
-    elif cfg.get("weight_dtype"):
-        graph["127"]["inputs"]["weight_dtype"] = cfg["weight_dtype"]
+    # --- \u53c2\u8003\u56fe\u5c3a\u5bf8\u7b56\u7565\uff1amatch=\u6309\u751f\u6210\u753b\u5e45\u7f29\u653e\uff08\u7701 token\uff09\uff1bmax=\u53c2\u8003\u7ba1\u7ebf 2048 \u77ed\u8fb9\uff08\u8eab\u4efd\u6700\u51c6\u4f46\u6162\u51e0\u500d\uff09---
+    if cfg.get("ref_image_size") in ("match", "max"):
+        n["ref_image_size"] = cfg["ref_image_size"]
+
+    # --- \u6a21\u578b\u53d8\u4f53\uff08\u7f3a\u7701\u4fdd\u7559\u6a21\u677f\u9ed8\u8ba4\uff1b.gguf \u81ea\u52a8\u5207\u52a0\u8f7d\u5668\uff0c\u89c1 _set_unet_node\uff09 ---
+    _set_unet_node(graph, "127", cfg)
     if cfg.get("clip") and "128" in graph:
         graph["128"]["inputs"]["clip_name"] = cfg["clip"]
     _apply_lora(graph, cfg)
@@ -636,7 +762,7 @@ def make_graph(cfg):
 
 # ============================================================ I2VA \u5de5\u4f5c\u6d41\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff09
 I2V_WF = os.path.join(ROOT, "workflows", "video_minimax_h3_i2v.api.json")
-I2V_UNET = "105:6"          # UNETLoader
+I2V_UNET = "105:6"          # UNETLoader\uff08.gguf \u65f6\u7531 _set_unet_node \u6362\u6210 UnetLoaderGGUF\uff09
 I2V_LATENT = "105:104"      # MiniMaxH3ImageToVideo\uff08prompt / first_frame \u5728\u8fd9\u91cc\uff09
 I2V_IMAGE = "114"           # LoadImage\uff08\u9996\u5e27\u53c2\u8003\u56fe\uff09
 I2V_DURATION = "105:111"    # PrimitiveFloat\uff08\u65f6\u957f\u79d2\uff09
@@ -669,11 +795,8 @@ def make_graph_i2v(cfg):
         raise RuntimeError("I2VA \u6d41\u7a0b\u5fc5\u987b\u63d0\u4f9b 1 \u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u89c6\u9891\u9996\u5e27\u3002")
     graph[I2V_IMAGE]["inputs"]["image"] = refs[0]
 
-    # --- \u6a21\u578b / CLIP ---
-    if cfg.get("model"):
-        graph[I2V_UNET]["inputs"]["unet_name"] = cfg["model"]
-    if cfg.get("weight_dtype"):
-        graph[I2V_UNET]["inputs"]["weight_dtype"] = cfg["weight_dtype"]
+    # --- \u6a21\u578b\uff08.gguf \u81ea\u52a8\u5207 UnetLoaderGGUF\uff0c\u4e0e Ref2VA \u5171\u7528\u540c\u4e00 helper\uff09/ CLIP ---
+    _set_unet_node(graph, I2V_UNET, cfg)
     if cfg.get("clip") and "105:13" in graph:
         graph["105:13"]["inputs"]["clip_name"] = cfg["clip"]
 
@@ -793,8 +916,13 @@ def extract_frames(video_path, outdir, n_frames=6, width=768, as_jpeg=False):
         dur = 15.0
     ext = ".jpg" if as_jpeg else ".png"
     frames = []
-    for i in range(n_frames):
-        t = (dur / n_frames) * i
+    # \u91c7\u6837\u70b9\uff1a\u5747\u5300\u8986\u76d6\u5168\u7247\u5e76**\u5f3a\u5236\u5305\u542b\u672b\u5e27**\u3002
+    # \u65e7\u5b9e\u73b0\u7528 t = dur/n*i\uff0c\u6700\u540e\u4e00\u5e27\u843d\u5728 (n-1)/n \u5904\uff0c**\u6c38\u8fdc\u91c7\u4e0d\u5230\u6700\u540e 1/n \u6bb5**\uff1b\u800c\u5c3e\u90e8\u6b63\u662f\u957f\u89c6\u9891
+    # \u9000\u5316\u6700\u96c6\u4e2d\u7684\u5730\u65b9\uff08\u8fd0\u52a8\u8870\u51cf\u3001\u7ed5\u56de\u5f00\u5934\u3001\u97f3\u9891\u53d8\u5f31\uff09\uff0c\u65e7\u91c7\u6837\u7b49\u4e8e\u7cfb\u7edf\u6027\u6f0f\u68c0\u3002
+    n = max(2, int(n_frames))
+    ts = [dur * i / (n - 1) for i in range(n)]
+    ts[-1] = max(0.0, dur - 0.5)          # \u672b\u5e27\u7559 0.5s \u4f59\u91cf\uff0c\u907f\u514d\u8d8a\u754c\u53d6\u4e0d\u5230
+    for i, t in enumerate(ts):
         fp = os.path.abspath(os.path.join(outdir, f"frame_{i+1:02d}{ext}"))
         cmd = ["ffmpeg", "-y", "-ss", f"{t:.2f}", "-i", video_path,
                "-frames:v", "1", "-vf", f"scale={width}:-2"]
@@ -805,6 +933,43 @@ def extract_frames(video_path, outdir, n_frames=6, width=768, as_jpeg=False):
         if r.returncode == 0 and os.path.exists(fp):
             frames.append(fp)
     return frames
+
+
+def review_frame_count(duration, base=32):
+    """\u8bc4\u5ba1\u62bd\u5e27\u6570\u968f\u65f6\u957f\u81ea\u9002\u5e94\uff1a\u77ed\u7247 32 \u5e27\u591f\u7528\uff1b\u957f\u7247\u9700\u8981\u66f4\u5bc6\u7684\u65f6\u95f4\u5206\u8fa8\u7387\u3002
+
+    60 \u79d2 / 40 \u5e27 \u2248 \u6bcf 1.5 \u79d2\u4e00\u5e27\uff1b\u518d\u5bc6\u6536\u76ca\u9012\u51cf\uff0c\u800c\u89c6\u89c9 LLM \u7684\u56fe\u7247 token \u6210\u672c\u662f\u7ebf\u6027\u4e0a\u5347\u7684\u3002
+    """
+    try:
+        d = float(duration)
+    except (TypeError, ValueError):
+        return int(base)
+    if d <= TRAINED_MAX_S:
+        return int(base)
+    return int(max(int(base), min(40, round(d * 0.66))))
+
+
+def long_video_critic_addendum(duration):
+    """\u957f\u89c6\u9891\u4e13\u7528\u8bc4\u5ba1\u89c4\u5219\uff1b\u226415 \u79d2\u8fd4\u56de\u7a7a\u4e32\uff08\u4fdd\u8bc1\u77ed\u7247\u8bc4\u5ba1 prompt \u5b57\u8282\u4e0d\u53d8\uff09\u3002"""
+    if not is_long_video(duration):
+        return ""
+    try:
+        d = float(duration)
+    except (TypeError, ValueError):
+        d = 0.0
+    return (
+        "\n"
+        f"**\u957f\u89c6\u9891\u989d\u5916\u6838\u9a8c\uff08\u672c\u7247 {d:g} \u79d2\uff0c\u5df2\u8d85\u51fa H3 \u8bad\u7ec3\u8303\u56f4 ~5\u201315 \u79d2\uff0c\u5fc5\u987b\u505a\uff09**\uff1a\n"
+        "\u3010\u5ba2\u89c2\u6307\u6807\u3011\u7531 ffmpeg \u9010\u79d2\u91c7\u6837\u7b97\u51fa\uff0c\u662f\u5730\u9762\u771f\u76f8\uff0c**\u4f60\u7684\u5224\u65ad\u4e0d\u5f97\u4e0e\u5b83\u77db\u76fe**\uff1a\n"
+        "  \u00b7 \u5c3e\u90e8\u8fd0\u52a8\u6bd4\uff08\u5c3e\u90e8/\u5168\u7247\u8fd0\u52a8\uff09< 0.7 \u2192 \u5224\u5c3e\u90e8\u8870\u51cf\uff0c\u6263 story_beats \u4e0e action_logic\uff1b\n"
+        "  \u00b7 \u5c3e\u90e8\u51bb\u7ed3\uff08\u5c3e\u90e8\u7a97\u53e3\u5185\u8fc7\u534a\u5e27\u8fd1\u9759\u6b62\uff09\u2192 \u5224\u753b\u9762\u505c\u4f4f\uff0c\u6263 story_beats \u4e0e action_logic\uff1b\n"
+        "  \u00b7 \u590d\u8bfb\u76f8\u5173\u504f\u9ad8\u5c5e\u3010\u8f85\u52a9\u8bc1\u636e\u3011\uff08\u8be5\u6307\u6807\u57fa\u7ebf\u9ad8\uff09\uff0c\u5fc5\u987b\u4e0e\u5c3e\u90e8\u8fd0\u52a8\u8870\u51cf/\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1\u540c\u65f6\u51fa\u73b0"
+        "\u624d\u5224\u5b9a\u4e3a\"\u7ed5\u56de\u5f00\u5934\"\uff0c\u4e0d\u8981\u4ec5\u51ed\u5b83\u6263\u5206\uff1b\n"
+        "  \u00b7 \u8272\u5f69\u6f02\u79fb\u8fc7\u4f4e\uff08< 6\uff09\u6216\u672b\u5e27\u5bf9\u6bd4\u5ea6\u8fdc\u4f4e\u4e8e\u9996\u5e27 \u2192 \u5149\u7167/\u8272\u5f69\u9000\u5316\uff0c\u6263 environment\uff1b\n"
+        "  \u00b7 \u5c3e\u90e8\u97f3\u9891\u6bd4\u9996\u90e8\u4f4e 10 dB \u4ee5\u4e0a \u2192 \u540e\u534a\u6bb5\u58f0\u97f3\u53d8\u5f31\uff0c\u6263 audio_affordance\u3002\n"
+        "\u8fd8\u8981\u6838\u9a8c**\u65f6\u957f\u5229\u7528\u7387**\uff1a\u8fd9\u51e0\u5341\u79d2\u662f\u5426\u88ab\u65b0\u5185\u5bb9\u586b\u6ee1\uff0c\u662f\u5426\"\u91cd\u5934\u620f\u5728\u524d\u534a\u6bb5\u3001\u540e\u534a\u6bb5\u5212\u6c34\"\uff1b"
+        "\u82e5\u540e\u6bb5\u91cd\u590d\u6216\u505c\u6ede\uff0cgaps \u5fc5\u987b\u5199\u660e\u4ece\u7b2c\u51e0\u79d2\u5f00\u59cb\u51fa\u95ee\u9898\u3002\n"
+    )
 
 
 # ============================================================ LLM \u751f\u6210\u5267\u672c+\u683c\u5f0f
