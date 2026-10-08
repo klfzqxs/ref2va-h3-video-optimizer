@@ -144,6 +144,92 @@ else:
     check("\u97f3\u9891\u8870\u51cf\u6837\u672c\u62a5\u300c\u5c3e\u90e8\u97f3\u9891\u53d8\u5f31\u300d", any("\u5c3e\u90e8\u97f3\u9891\u53d8\u5f31" in x for x in f_au), f_au)
 
 print()
+print("=" * 72)
+print("E. \u53c2\u8003\u7d20\u6750\u7528\u6cd5\uff1a\u4e0d\u9884\u8bbe\u300c\u7b2c 1 \u5f20\u56fe\uff1d\u89c6\u9891\u9996\u5e27\u300d\uff08\u53ea\u6709\u7528\u6237\u660e\u786e\u8981\u6c42\u624d\u9501\uff09")
+print("=" * 72)
+import optimizer as opt  # noqa: E402
+
+_ref_hint = opt._IMG_HINT
+check("Ref2VA \u9644\u56fe\u8bf4\u660e\u4e0d\u518d\u628a <Picture 1> \u5f53\u6210\u9996\u5e27",
+      "<Picture 1>\uff08\u9996\u5e27" not in _ref_hint and "\u4f7f\u9996\u5e27\u4e0e" not in _ref_hint)
+check("\u300c\u9996\u5e27\u300d\u53ea\u51fa\u73b0\u5728\u300c\u7528\u6237\u660e\u786e\u8981\u6c42\u624d\u9501\u300d\u7684\u6761\u4ef6\u53e5\u91cc",
+      all(("\u660e\u786e\u5199\u4e86" in _ln) or ("\u9996\u5e27" not in _ln) for _ln in _ref_hint.splitlines()),
+      [ln for ln in _ref_hint.splitlines() if "\u9996\u5e27" in ln and "\u660e\u786e\u5199\u4e86" not in ln])
+check("Ref2VA \u9644\u56fe\u8bf4\u660e\u4e0d\u518d\u8981\u6c42\u300c\u9996\u5e27\u5b8c\u5168\u4e00\u81f4\u300d",
+      "\u5b8c\u5168\u4e00\u81f4" not in _ref_hint and "\u89c6\u9891\u5f00\u5934" not in _ref_hint)
+check("Ref2VA \u9644\u56fe\u8bf4\u660e\u4e0d\u518d\u7981\u6b62\u8fd0\u955c/\u5207\u955c",
+      "\u65e0\u4efb\u4f55\u5207\u6362" not in _ref_hint and "\u65e0\u4efb\u4f55\u8fd0\u955c" not in _ref_hint)
+check("Ref2VA \u9644\u56fe\u8bf4\u660e\u4e0d\u518d\u6709\u300c\u4e0d\u8981\u9884\u8bbe\u2026\u300d\u8fd9\u7c7b\u7981\u6b62\u6027\u9884\u8bbe\uff08\u4ea4\u7ed9\u7528\u6237\u63d0\u793a\u8bcd\u51b3\u5b9a\uff09",
+      "\u4e0d\u8981\u9884\u8bbe" not in _ref_hint and "\u4e0d\u8981\u9ed8\u8ba4" not in _ref_hint)
+check("Ref2VA \u9644\u56fe\u8bf4\u660e\u4fdd\u7559\u300c\u7528\u6237\u660e\u786e\u8981\u6c42\u624d\u9501\u300d\u7684\u6761\u4ef6", "\u660e\u786e\u5199\u4e86" in _ref_hint)
+check("\u5267\u672c schema \u91cc frame_note \u4e0d\u518d\u9884\u8bbe\u300c\u9996\u5e27\u300d",
+      "\u9996\u5e27\u6216\u5173\u952e\u5e27" not in d10 and "\u753b\u9762\u951a\u70b9" in d10)
+check("I2VA \u9644\u56fe\u8bf4\u660e\u4ecd\u7136\u5199\u6b7b\u7b2c\u4e00\u5e27\uff08\u90a3\u662f\u89c4\u8303\uff09", "0.00 \u79d2\u7684\u7b2c\u4e00\u5e27" in opt._I2VA_IMG_HINT)
+check("I2VA \u7684 system prompt \u4ecd\u542b\u9996\u5e27\u58f0\u660e",
+      "at 0.00 seconds into the target video, <Picture 1>" in ra.system_i2va(10))
+check("\u8bc4\u5ba1\u4e0d\u518d\u9884\u8bbe\u300c\u9996\u5e27\u6784\u56fe\u5fc5\u987b\u5339\u914d\u53c2\u8003\u56fe\u300d",
+      "\u9996\u5e27\u89c6\u89d2/\u6784\u56fe\u5fc5\u987b\u5339\u914d\u6307\u5b9a\u53c2\u8003\u56fe" not in ra.SYSTEM_CRITIC)
+check("\u8bc4\u5ba1\u4ecd\u4fdd\u7559\u4e00\u7968\u5426\u51b3\u673a\u5236", "\u4e00\u7968\u5426\u51b3\u5236" in ra.SYSTEM_CRITIC)
+
+
+class _FakeLLM:
+    """\u53ea\u5b9e\u73b0 encode_image \u7684\u5047 LLM\uff1a\u8bb0\u5f55\u88ab\u8981\u6c42\u7f16\u7801\u4e86\u54ea\u4e9b\u56fe\u3002"""
+
+    def __init__(self, fail_on=()):
+        self.calls = []
+        self.fail_on = set(fail_on)
+
+    def encode_image(self, path):
+        self.calls.append(path)
+        if path in self.fail_on:
+            raise RuntimeError("\u6a21\u62df\u8bfb\u53d6\u5931\u8d25")
+        return "b64:" + os.path.basename(path)
+
+
+_three = {"refs": [{"path": "a.png"}, {"path": "b.png"}, {"path": "c.png"}]}
+_fk = _FakeLLM()
+_imgs = opt._load_script_imgs(_fk, _three)
+check("\u5199\u5267\u672c\u65f6\u628a**\u5168\u90e8**\u53c2\u8003\u56fe\u90fd\u5582\u7ed9 LLM\uff08\u539f\u6765\u53ea\u5582\u7b2c 1 \u5f20\uff09", len(_imgs) == 3, _imgs)
+check("\u6309\u987a\u5e8f\u7f16\u7801\u3001\u6807\u7b7e\u4e00\u4e00\u5bf9\u5e94", _fk.calls == ["a.png", "b.png", "c.png"], _fk.calls)
+_fk2 = _FakeLLM(fail_on=("b.png",))
+check("\u5355\u5f20\u8bfb\u56fe\u5931\u8d25\u53ea\u8df3\u8fc7\u3001\u4e0d\u5f71\u54cd\u5176\u4f59", len(opt._load_script_imgs(_fk2, _three)) == 2,
+      opt._load_script_imgs(_FakeLLM(), _three))
+check("\u65e0\u53c2\u8003\u56fe\u65f6\u8fd4\u56de\u7a7a\u5217\u8868\uff08\u8d70\u7eaf\u6587\u672c\u8def\u5f84\uff09",
+      opt._load_script_imgs(_FakeLLM(), {"refs": []}) == [])
+check("\u9644\u56fe\u8bf4\u660e\u5728\u65e0\u56fe\u65f6\u4e0d\u6ce8\u5165", opt._img_hint({"flow": "ref2va"}, []) == "")
+check("\u6709\u56fe\u65f6 Ref2VA \u6ce8\u5165\u4e2d\u6027\u7248\u8bf4\u660e",
+      opt._img_hint({"flow": "ref2va"}, ["x"]) == opt._IMG_HINT)
+check("\u6709\u56fe\u65f6 I2VA \u6ce8\u5165\u9996\u5e27\u7248\u8bf4\u660e",
+      opt._img_hint({"flow": "i2va"}, ["x"]) == opt._I2VA_IMG_HINT)
+check("\u53c2\u8003\u56fe\u6570\u91cf\u4e0a\u9650\uff08\u22649 \u5f20\uff09", len(opt._load_script_imgs(
+    _FakeLLM(), {"refs": [{"path": "p%d.png" % i} for i in range(12)]})) == 9)
+
+print()
+print("=" * 72)
+print("F. \u5149\u7167/\u8272\u8c03\u4e0d\u5f3a\u5236\u53d8\u5316\uff1a\u6052\u5b9a\u5149\u7167\u7684\u573a\u666f\u4e0d\u8be5\u88ab\u5f53\u6210\u9000\u5316")
+print("=" * 72)
+check("\u957f\u89c6\u9891\u5199\u4f5c\u89c4\u5219\u4e0d\u518d\u4e00\u5f8b\u8981\u6c42\u300c\u8fde\u7eed\u6f14\u53d8\u300d",
+      "\u5149\u7167\u4e0e\u8272\u5f69\u5199\u6210\u8d2f\u7a7f\u5168\u7a0b\u7684\u8fde\u7eed\u6f14\u53d8\uff1a\u660e\u786e\u5199\u51fa\u5404\u9636\u6bb5" not in d60)
+check("\u957f\u89c6\u9891\u5199\u4f5c\u89c4\u5219\u660e\u786e\u5141\u8bb8\u300c\u6052\u5b9a\u5149\u7167/\u6052\u5b9a\u8272\u8c03\u300d",
+      "\u6052\u5b9a\u5149\u7167/\u6052\u5b9a\u8272\u8c03" in d60 and "\u53ea\u6709\u5267\u60c5\u9700\u8981\u53d8\u5316\u65f6" in d60)
+check("\u300c\u65b0\u5185\u5bb9\u5747\u644a\u300d\u4e0d\u518d\u628a\u300c\u65b0\u5149\u4f4d\u300d\u5f53\u5fc5\u8981\u6761\u4ef6", "\u65b0\u5149\u4f4d" not in d60)
+
+_add60 = ra.long_video_critic_addendum(60)
+check("\u8bc4\u5ba1\u4e0d\u518d\u628a\u300c\u8272\u5f69\u6f02\u79fb\u8fc7\u4f4e\u300d\u4e00\u5f8b\u5f53\u9000\u5316\u6263\u5206",
+      "\u8272\u5f69\u6f02\u79fb\u8fc7\u4f4e" not in _add60 and "\u4e0d\u7b97\u9000\u5316" in _add60)
+
+_m_const = {"color_drift": 1.0, "contrast_first": 60.0, "contrast_last": 60.0,
+            "motion_tail_ratio": 0.9, "frozen_ratio": 0.0, "tail_frozen_ratio": 0.0,
+            "audio_tail_delta_db": 0.0}
+_flags_c = vm.flags(_m_const, 20.0)
+check("\u8272\u8c03\u6052\u5b9a\u4e0d\u518d\u8fdb\u786c\u544a\u8b66", not any("\u8272\u8c03" in x for x in _flags_c), _flags_c)
+check("\u8272\u8c03\u6052\u5b9a\u6539\u4e3a\u8f85\u52a9\u8bc1\u636e\uff08\u4ea4\u8bc4\u5ba1\u6309\u5267\u672c\u5224\u65ad\uff09",
+      any("\u8272\u8c03" in x for x in vm.advisories(_m_const)), vm.advisories(_m_const))
+_m_dark = dict(_m_const, contrast_last=10.0)
+check("\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1\u4ecd\u662f\u786c\u544a\u8b66\uff08\u6ca1\u6709\u628a\u68c0\u67e5\u4e00\u8d77\u524a\u6389\uff09",
+      any("\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1" in x for x in vm.flags(_m_dark, 20.0)), vm.flags(_m_dark, 20.0))
+
+print()
 print("checks:", "ALL PASS" if not fails else "%d FAILED" % len(fails))
 for f in fails:
     print("  -", f)

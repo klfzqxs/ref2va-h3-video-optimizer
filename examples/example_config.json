@@ -37,5 +37,10 @@
   "review_frames": 32,
   "review_frame_width": 448,
   "review_frame_jpeg": true,
+
+  "low_vram": "off",
+  "chunk_chunks": 8,
+  "chunk_head_chunks": 8,
+
   "outdir": "./outputs/optimizer"
 }

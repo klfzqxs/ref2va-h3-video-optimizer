@@ -144,6 +144,15 @@
       <option value="max">max：参考管线 2048 短边（身份最准，但参考 token 全程参与，显存与耗时可能翻几倍）</option>
     </select><span class="hint" id="refSizeHint">「参考图 token 会贯穿每一步采样」，所以 max 明显更慢更吃显存</span></div>
     <div class="field"><label>评审抽帧数 review_frames</label><input id="review_frames" type="number" value="32" min="4" max="64"><span class="hint">长视频（>15 秒）会自动抬到 40；此处设的是基准值</span></div>
+    <div class="field"><label>低显存分块 low_vram（可选，默认关闭）</label><select id="low_vram">
+      <option value="off">off：不启用（默认）</option>
+      <option value="mlp">mlp：MLP 分块（开销最小）</option>
+      <option value="mlp_attn">mlp_attn：MLP 分块 + 注意力头分组（更省，更慢）</option>
+    </select><span class="hint" id="lvHint">用 ComfyUI-KJNodes 的两个节点把「刚好爆显存」的档救回来（本机实测 30s@0.8MP 从不可用变成能出片）；<b>它会改变输出位</b>，整轮优化期间必须保持同一设置</span></div>
+    <div class="field"><label>分块数 chunk_chunks / chunk_head_chunks</label>
+      <div class="row"><input id="chunk_chunks" type="number" value="8" min="1" max="64" step="1" style="max-width:88px">
+      <input id="chunk_head_chunks" type="number" value="8" min="1" max="56" step="1" style="max-width:88px"></div>
+      <span class="hint">默认 8 / 8（实测救档设置）；packed token 短于 4096 时不切块</span></div>
   </div>
   <h2 class="foldh" data-fold>显存预算估计（测试功能）</h2>
   <div class="row">
@@ -427,6 +436,8 @@ async function copyBudgetReport(){
   L.push('- 时长 '+($('duration').value||'?')+' 秒 · 画幅 '+($('megapixels').value||'?')+' MP · 步数 '+($('steps').value||'?'));
   L.push('- 模型 `'+($('model').value||'(未选)')+'`');
   L.push('- weight_dtype `'+$('weight_dtype').value+'` · ref_image_size `'+$('ref_image_size').value+'`');
+  L.push('- low_vram `'+$('low_vram').value+'` · chunk_chunks '+$('chunk_chunks').value
+         +' / head_chunks '+$('chunk_head_chunks').value+'（会改变输出位，报画质问题时必须带上）');
   L.push('');
   try{
     const q=new URLSearchParams({duration:$('duration').value||'', megapixels:$('megapixels').value||'',
@@ -519,7 +530,9 @@ async function run(){
     admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
     base_patience:+($('patience').value||3), files,
     weight_dtype:$('weight_dtype').value, ref_image_size:$('ref_image_size').value,
-    review_frames:+($('review_frames').value||32)
+    review_frames:+($('review_frames').value||32),
+    low_vram:$('low_vram').value, chunk_chunks:+($('chunk_chunks').value||8),
+    chunk_head_chunks:+($('chunk_head_chunks').value||8)
   };
   $('run').disabled=true; $('jobbadge').className='badge b-running'; $('jobbadge').textContent='提交中…';
   try{
@@ -686,6 +699,8 @@ function collectConfig(){
     quick_render:$('quick').checked, fine_render:$('fine').checked,
     admission_threshold:+($('admission').value||5), max_iterations:+($('maxiter').value||12),
     base_patience:+($('patience').value||3), review_frames:+($('review_frames').value||32),
+    low_vram:$('low_vram').value, chunk_chunks:+($('chunk_chunks').value||8),
+    chunk_head_chunks:+($('chunk_head_chunks').value||8),
     refs:collectRows('refrows').map(x=>({path:x.name,note:x.note})),
     audios:collectRows('audrows').map(x=>({path:x.name,note:x.note}))
   };
@@ -711,7 +726,7 @@ function resetForm(){
   location.reload();
 }
 
-const FORM_IDS=['name','target','duration','story','model','clip','weight_dtype','ref_image_size','review_frames','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
+const FORM_IDS=['name','target','duration','story','model','clip','weight_dtype','ref_image_size','review_frames','low_vram','chunk_chunks','chunk_head_chunks','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
 function saveForm(){
   try{
@@ -747,7 +762,7 @@ function restoreForm(){
   applyFlowUI();
 }
 function bindSave(){ document.addEventListener('input', debounce(saveForm,400)); document.addEventListener('change', debounce(saveForm,400)); }
-const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',weight_dtype:'weight_dtype',ref_image_size:'ref_image_size',review_frames:'review_frames',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
+const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',weight_dtype:'weight_dtype',ref_image_size:'ref_image_size',review_frames:'review_frames',low_vram:'low_vram',chunk_chunks:'chunk_chunks',chunk_head_chunks:'chunk_head_chunks',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
 function applyForm(f){
   if(!f) return;
   Object.entries(APPLY_MAP).forEach(([id,key])=>{ if($(id)&&f[key]!=null&&f[key]!=='') $(id).value=f[key]; });

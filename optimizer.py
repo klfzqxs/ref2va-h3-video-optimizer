@@ -119,6 +119,10 @@ def build_gcfg(cfg, prompt, seed):
         "sampler": cfg.get("sampler"), "scheduler": cfg.get("scheduler"),
         "megapixels": mp,
         "aspect_ratio": normalize_aspect(cfg.get("aspect")),
+        # \u4f4e\u663e\u5b58\u5206\u5757\uff08\u53ef\u9009\uff0c\u9ed8\u8ba4\u5173\u95ed\uff09\uff1aMLP \u5206\u5757 / MLP+\u6ce8\u610f\u529b\u5206\u5757\uff0c\u63d2\u5728 Sage \u8865\u4e01\u4e4b\u540e
+        "low_vram": cfg.get("low_vram") or "off",
+        "chunk_chunks": cfg.get("chunk_chunks"),
+        "chunk_head_chunks": cfg.get("chunk_head_chunks"),
         # I2VA \u53ea\u5403\u9996\u5e27\uff0c\u6ca1\u6709 B \u65b9\u5f0f\uff08\u89c6\u9891\u7f16\u8f91\uff09\u6f14\u5316
         "video_ref": None if i2v else cfg.get("video_ref"),
     }
@@ -493,31 +497,51 @@ def _save_variant(outdir, rel_dir, data):
         print(f"    \u26a0 \u843d\u76d8\u5931\u8d25: {str(e)[:80]}")
 
 
-def _load_script_img(llm, cfg):
-    """\u5199/\u6539\u5267\u672c\u65f6\u628a\u56fe1\uff08\u9996\u5e27\u53c2\u8003\uff09\u7f16\u7801\u4f9b LLM \u770b\u56fe\u8f85\u52a9\uff1b\u65e0\u56fe\u5219\u8fd4\u56de None\u3002"""
-    refs_list = cfg.get("refs") or []
-    if refs_list and refs_list[0].get("path"):
+SCRIPT_IMG_MAX = 9
+
+
+def _load_script_imgs(llm, cfg):
+    """\u5199/\u6539\u5267\u672c\u65f6\u628a**\u5168\u90e8**\u53c2\u8003\u56fe\u7f16\u7801\u7ed9 LLM \u770b\u56fe\u8f85\u52a9\uff08\u5931\u8d25\u9010\u5f20\u8df3\u8fc7\uff09\u3002
+
+    \u4ee5\u524d\u53ea\u5582\u7b2c 1 \u5f20\u3001\u8fd8\u628a\u5b83\u5f53"\u9996\u5e27\u53c2\u8003\u56fe"\u2014\u2014\u4f46\u53c2\u8003\u7d20\u6750\u5e38\u662f\u7528\u6765**\u7ec4\u5408**\u7684\uff08\u5c71\u5cf0 + \u4eba\u7269 + \u6c34\u6d41\uff09\uff0c
+    \u7b2c\u4e00\u5f20\u4e0d\u4e00\u5b9a\u662f\u89c6\u9891\u7684\u7b2c\u4e00\u5e27\uff0c\u53ea\u770b\u7b2c 1 \u5f20\u7b49\u4e8e\u628a\u5176\u4f59\u7d20\u6750\u5728"\u770b\u56fe"\u8fd9\u4e00\u6b65\u4e22\u6389\u3002
+    """
+    imgs = []
+    failed = []
+    for r in (cfg.get("refs") or [])[:SCRIPT_IMG_MAX]:
+        p = r.get("path") if isinstance(r, dict) else None
+        if not p:
+            continue
         try:
-            b64 = llm.encode_image(refs_list[0]["path"])
-            print(f"  [\u56fe1\u8f85\u52a9] \u5df2\u52a0\u8f7d\u9996\u5e27\u53c2\u8003\u56fe\u4f9b LLM \u770b\u56fe\u5199\u5267\u672c")
-            return b64
+            imgs.append(llm.encode_image(p))
         except Exception as e:
-            print(f"  [\u56fe1\u8f85\u52a9] \u52a0\u8f7d\u5931\u8d25\uff0c\u56de\u9000\u7eaf\u6587\u672c: {e}")
-    return None
+            failed.append(os.path.basename(str(p)))
+            print(f"  [\u53c2\u8003\u56fe\u8f85\u52a9] \u52a0\u8f7d\u5931\u8d25\uff0c\u8df3\u8fc7 {os.path.basename(str(p))}: {str(e)[:60]}")
+    if imgs:
+        print(f"  [\u53c2\u8003\u56fe\u8f85\u52a9] \u5df2\u52a0\u8f7d {len(imgs)} \u5f20\u53c2\u8003\u56fe\u4f9b LLM \u770b\u56fe\u5199\u5267\u672c"
+              + (f"\uff08{len(failed)} \u5f20\u5931\u8d25\uff09" if failed else ""))
+    return imgs
 
 
-_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a <Picture 1>\uff08\u9996\u5e27/\u80cc\u666f\u73af\u5883/\u4e3b\u4f53\u521d\u59cb\u59ff\u6001/\u670d\u88c5/\u4f53\u6001\u53c2\u8003\uff09\u3002"
-             "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u89c6\u9891\u5f00\u5934\u7684\u573a\u666f\u3001\u4e3b\u4f53\u7684\u59ff\u6001\u3001\u670d\u88c5\u4e0e\u4f53\u6001\uff0c\u4f7f\u9996\u5e27\u4e0e <Picture 1> \u5b8c\u5168\u4e00\u81f4\uff1b"
-             "\u5e76\u4fdd\u8bc1\u5168\u7a0b\u955c\u5934\u65e0\u4efb\u4f55\u5207\u6362/\u8fd0\u955c/\u63a8\u62c9\u3002")
+# Ref2VA\uff1a\u53c2\u8003\u7d20\u6750\u662f"\u53ef\u7528\u6750\u6599"\uff0c\u7528\u9014\u6309\u5404\u81ea\u5907\u6ce8\u7ec4\u5408\uff1b\u662f\u5426\u9501\u5b9a\uff08\u9996\u5e27/\u673a\u4f4d\uff09\u5b8c\u5168\u7531\u7528\u6237\u7684\u753b\u9762\u63cf\u8ff0\u51b3\u5b9a\u3002
+_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n"
+             "\u4e0b\u65b9\u9644\u56fe\u662f\u672c\u6b21\u53ef\u7528\u7684\u53c2\u8003\u7d20\u6750\uff0c\u4e0e\u300c\u53ef\u7528\u53c2\u8003\u56fe\u300d\u6e05\u5355\u4e00\u4e00\u5bf9\u5e94\uff08\u6807\u7b7e\u89c1\u6e05\u5355\uff1a<Picture 1>\u2026\uff09\u3002\n"
+             "\u6bcf\u5f20\u56fe\u7684\u7528\u9014\u4ee5\u6e05\u5355\u91cc\u5b83\u81ea\u5df1\u7684\u300c\u53c2\u8003\uff1a\u2026\u300d\u5907\u6ce8\u4e3a\u51c6\uff1a\u53ef\u80fd\u662f\u4e3b\u4f53\u5916\u89c2\u3001\u670d\u88c5\u3001\u573a\u666f\u73af\u5883\u3001\u9053\u5177\u3001"
+             "\u98ce\u683c\u6216\u59ff\u6001\u53c2\u8003\uff0c**\u4e5f\u53ef\u80fd\u53ea\u662f\u7528\u6765\u7ec4\u5408\u7684\u7d20\u6750**\u3002\n"
+             "\u6309\u5404\u5f20\u56fe\u7684\u5b9e\u9645\u7528\u9014\u628a\u5b83\u4eec\u7ec4\u5408\u8fdb\u753b\u9762\uff0c\u5e76\u4fdd\u6301\u4e3b\u4f53\u8eab\u4efd\u3001\u670d\u88c5\u3001\u8272\u5f69\u3001\u5173\u952e\u9053\u5177\u4e0e\u7a7a\u95f4\u5173\u7cfb\u4e0e\u53c2\u8003\u4e00\u81f4\u3002\n"
+             "\u53ea\u6709\u5f53\u7528\u6237\u7684\u6545\u4e8b\u63cf\u8ff0\u91cc**\u660e\u786e\u5199\u4e86**\u300c\u4ee5\u67d0\u5f20\u53c2\u8003\u56fe\u4f5c\u4e3a\u9996\u5e27/\u5f00\u573a\u753b\u9762\u300d\u300c\u673a\u4f4d\u56fa\u5b9a\u4e0d\u79fb\u52a8\u300d"
+             "\u8fd9\u7c7b\u9501\u5b9a\u65f6\uff0c\u624d\u6309\u8be5\u8981\u6c42\u5bf9\u9f50\u3002\n")
 
+# I2VA\uff1a\u90a3\u5f20\u56fe\u6309\u89c4\u8303**\u5c31\u662f** 0.00 \u79d2\u7684\u7b2c\u4e00\u5e27\uff0c\u8fd9\u91cc\u5fc5\u987b\u5199\u6b7b\uff08\u4e0e system_i2va \u7684\u9996\u5e27\u58f0\u660e\u4e00\u81f4\uff09\u3002
 _I2VA_IMG_HINT = ("\n\n# \u9644\u56fe\u8bf4\u660e\n\u4e0b\u65b9\u9644\u56fe\u4e3a <Picture 1>\uff0c\u5373\u76ee\u6807\u89c6\u9891 0.00 \u79d2\u7684\u7b2c\u4e00\u5e27\u3002"
                   "\u8bf7\u636e\u6b64\u7cbe\u786e\u8fd8\u539f\u5176\u98ce\u683c\u3001\u4e3b\u4f53\u5916\u89c2\u3001\u6784\u56fe\u4e0e\u573a\u666f\u951a\u70b9\uff0c\u5e76\u8ba9\u540e\u7eed\u52a8\u4f5c\u4ece\u8fd9\u4e00\u5e27\u81ea\u7136\u53d1\u5c55"
                   "\uff08I2VA \u5141\u8bb8\u5206\u955c\u4e0e\u955c\u5934\u8fd0\u52a8\uff0c\u6309\u5b98\u65b9\u89c4\u5219\u5199\uff09\u3002")
 
 
-def _img_hint(cfg, has_img):
-    """\u5199\u5267\u672c\u65f6\u9644\u56fe\u8bf4\u660e\uff1aI2VA \u7528\u9996\u5e27\u7248\uff08\u5141\u8bb8\u5206\u955c/\u8fd0\u955c\uff09\uff0cRef2VA \u7528\u539f\u7248\uff08\u9501\u5b9a\u9996\u5e27\u4e0d\u5207\u955c\uff09\u3002"""
-    if not has_img:
+def _img_hint(cfg, imgs):
+    """\u5199\u5267\u672c\u65f6\u9644\u56fe\u8bf4\u660e\uff1aI2VA \u7528\u9996\u5e27\u7248\uff08\u9996\u5e27\u5c31\u662f\u90a3\u5f20\u56fe\uff09\uff1bRef2VA \u7528\u4e2d\u6027\u7248
+    \uff08\u53c2\u8003\u7d20\u6750\u6309\u5404\u81ea\u7528\u9014\u7ec4\u5408\uff0c\u53ea\u6709\u7528\u6237\u660e\u786e\u8981\u6c42\u9501\u5b9a\u65f6\u624d\u9501\uff09\u3002"""
+    if not imgs:
         return ""
     return _I2VA_IMG_HINT if _flow(cfg) == "i2va" else _IMG_HINT
 
@@ -534,15 +558,15 @@ def _valid_script(s):
         for sh in shots)
 
 
-def _gen_script_json(llm, system, user, img, attempts=5):
-    """\u751f\u6210\u5267\u672c JSON\uff08\u5e26\u56fe\u5219\u591a\u6a21\u6001\uff09\uff0c\u5e26\u91cd\u8bd5 + \u91cd\u8bd5\u65f6\u5f3a\u63d0\u793a\uff1b\u7a7a/\u4e0d\u5b8c\u6574\u5267\u672c\u5224\u5931\u8d25\u91cd\u8bd5\u3002"""
+def _gen_script_json(llm, system, user, imgs, attempts=5):
+    """\u751f\u6210\u5267\u672c JSON\uff08\u6709\u56fe\u5219\u591a\u6a21\u6001\uff0c**\u652f\u6301\u591a\u5f20\u53c2\u8003\u56fe**\uff09\uff0c\u5e26\u91cd\u8bd5 + \u91cd\u8bd5\u65f6\u5f3a\u63d0\u793a\uff1b\u7a7a/\u4e0d\u5b8c\u6574\u5267\u672c\u5224\u5931\u8d25\u91cd\u8bd5\u3002"""
     _stage("\u5199\u5267\u672c")
     last = None
     try:
         for attempt in range(1, attempts + 1):
             try:
-                script = (llm.vision_json(system, user, [img], max_tokens=16000)
-                          if img is not None else llm.chat_json(system, user, max_tokens=16000))
+                script = (llm.vision_json(system, user, list(imgs), max_tokens=16000)
+                          if imgs else llm.chat_json(system, user, max_tokens=16000))
                 if _valid_script(script):
                     return script
                 last = ValueError("\u5267\u672c\u4e3a\u7a7a\u6216\u4e0d\u5b8c\u6574")
@@ -667,9 +691,9 @@ def gen_fresh(llm, story, cfg, index, prev_weak=None):
         f"\u8bf7\u56f4\u7ed5\u4f18\u5316\u76ee\u6807\uff0c\u5168\u65b0\u521b\u4f5c\u4e00\u4e2a\u5b8c\u6574\u7684 {dur:g} \u79d2\u5267\u672c\uff08\u5206\u955c\u603b\u65f6\u957f={dur:g}s\uff09\uff0c"
         "\u671d\u6574\u4f53\u4f18\u5316\u76ee\u6807\u505a\u6574\u4f53\u4f18\u5316\u3001\u4e0d\u62c6\u5206\u76ee\u6807\uff1b\u7528\u8db3\u591f\u7cbe\u786e\u7684\u8c03\u5ea6/\u52a8\u4f5c/\u58f0\u97f3/\u8d1f\u5411\u7ea6\u675f\u63cf\u5199\u6765\u843d\u5b9e\u76ee\u6807\u3002"
     )
-    script_img = _load_script_img(llm, cfg)
-    img_hint = _img_hint(cfg, script_img)
-    script = _gen_script_json(llm, ra.system_director(dur), dir_prompt + img_hint, script_img)
+    script_imgs = _load_script_imgs(llm, cfg)
+    img_hint = _img_hint(cfg, script_imgs)
+    script = _gen_script_json(llm, ra.system_director(dur), dir_prompt + img_hint, script_imgs)
     print(f"\n  \u250c\u2500 \u5168\u65b0\u5267\u672c[{index}]")
     for _l in script_to_text(script).splitlines():
         print(f"  \u2502  {_l}")
@@ -733,8 +757,8 @@ def gen_child(llm, story, champion, cfg, suggestion):
     dims_txt = "\n".join(f"- {d}" for d in weak_dims) or "(\u65e0)"
     gaps_txt = "\n".join(f"- {g}" for g in gaps) or "(\u65e0)"
     ref_txt, aud_txt = _fmt_refs(cfg)
-    script_img = _load_script_img(llm, cfg)
-    img_hint = _img_hint(cfg, script_img)
+    script_imgs = _load_script_imgs(llm, cfg)
+    img_hint = _img_hint(cfg, script_imgs)
     director_user = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n"
         f"# \u4f18\u5316\u76ee\u6807\n{target}\n\n"
@@ -747,7 +771,7 @@ def gen_child(llm, story, champion, cfg, suggestion):
         f"{img_hint}"
         "\u6309 system \u7ea6\u5b9a\u7684 JSON \u7ed3\u6784\u8f93\u51fa\u3002"
     )
-    new_script = _gen_script_json(llm, ra.system_director(dur), director_user, script_img)
+    new_script = _gen_script_json(llm, ra.system_director(dur), director_user, script_imgs)
     print(f"\n  \u250c\u2500 \u5b50\u53d8\u4f53\u5267\u672c\uff08\u5efa\u8bae: {suggestion[:60]}\uff09")
     for _l in script_to_text(new_script).splitlines():
         print(f"  \u2502  {_l}")
@@ -922,6 +946,12 @@ def run_optimizer(cfg, llm):
                 print(f"  {_l['label']}\uff1a{_l['value']}")
         except Exception:
             pass
+    _lv_mode, _lv_chunks, _lv_heads = ra.low_vram_settings(cfg)
+    if _lv_mode != "off":
+        _lv_txt = "MLP \u5206\u5757 %d" % _lv_chunks
+        if _lv_mode == "mlp_attn":
+            _lv_txt += " \uff0b \u6ce8\u610f\u529b\u5934\u5206\u7ec4 %d" % _lv_heads
+        print(f"\u4f4e\u663e\u5b58\u5206\u5757: {_lv_txt}\uff08ComfyUI-KJNodes\uff09| \u4f1a\u6539\u53d8\u8f93\u51fa\u4f4d\uff0c\u6574\u8f6e\u4f18\u5316\u5fc5\u987b\u4fdd\u6301\u540c\u4e00\u8bbe\u7f6e")
     print(f"\u79cd\u5b50     : {seed}\uff08\u5168\u7a0b\u6052\u5b9a\uff09| \u51c6\u5165\u7ebf\u2265{admission} | \u8fed\u4ee3\u4e0a\u9650 {max_iter} | \u540c\u57fa\u7ebf\u8010\u5fc3 {base_patience}")
     print("=" * 60)
 
@@ -1192,6 +1222,17 @@ def load_config(path):
     # ---- \u53c2\u8003\u56fe\u5c3a\u5bf8\u7b56\u7565\uff08\u4ec5 Ref2VA \u751f\u6548\uff09----
     if c["ref_image_size"] not in ("match", "max"):
         raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] ref_image_size \u53ea\u80fd\u662f match \u6216 max\uff0c\u5f53\u524d\uff1a%r" % (c["ref_image_size"],))
+    # ---- \u4f4e\u663e\u5b58\u5206\u5757\uff08\u53ef\u9009\uff0c\u9ed8\u8ba4\u5173\u95ed\uff09----
+    c.setdefault("low_vram", "off")            # off / mlp / mlp_attn\uff08ComfyUI-KJNodes \u7684\u4e24\u4e2a\u8282\u70b9\uff09
+    c.setdefault("chunk_chunks", ra.LOW_VRAM_DEFAULT_CHUNKS)          # MLP \u5206\u5757\u6570\uff081\u201364\uff09
+    c.setdefault("chunk_head_chunks", ra.LOW_VRAM_DEFAULT_HEAD_CHUNKS)  # \u6ce8\u610f\u529b\u5934\u5206\u7ec4\u6570\uff081\u201356\uff09
+    try:
+        _mode, _ch, _hc = ra.low_vram_settings(c)
+    except ValueError as e:
+        raise SystemExit("[config \u6821\u9a8c\u5931\u8d25] " + str(e))
+    if _mode != "off":
+        print("[config] \u4f4e\u663e\u5b58\u5206\u5757\u5df2\u5f00\u542f\uff1amode=%s chunks=%s head_chunks=%s"
+              "\uff08\u6ce8\u610f\uff1a\u5b83\u4f1a\u6539\u53d8\u8f93\u51fa\u4f4d\uff0c\u6574\u8f6e\u4f18\u5316\u671f\u95f4\u5fc5\u987b\u4fdd\u6301\u540c\u4e00\u8bbe\u7f6e\uff09" % (_mode, _ch, _hc))
     c.setdefault("video_edit", False)          # B \u65b9\u5f0f\uff1a\u81ea\u52a8\u7528\u4e0a\u4e00\u6b65\u751f\u6210\u7684\u89c6\u9891\u4f5c\u5019\u9009\u53c2\u8003
     c.setdefault("quick_render", False)        # \u5feb\u901f\u6e32\u67d3\uff1a\u4ec5\u5206\u8fa8\u7387\u4e0e\u6b65\u6570 \u00d70.707\uff08\u5176\u4f59\u540c\u7cbe\u6e32\uff09
     c.setdefault("fine_render", True)          # \u7ed3\u675f\u7cbe\u6e32\uff1a\u722c\u5c71\u7ed3\u675f\u540e\u7528\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570\u518d\u6e32\u4e00\u6b21

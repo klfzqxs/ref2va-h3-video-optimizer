@@ -592,6 +592,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": _derr})
             return
 
+        # ---- \u4f4e\u663e\u5b58\u5206\u5757\u6821\u9a8c\uff08\u53ef\u9009\u529f\u80fd\uff1b\u975e\u6cd5\u503c\u76f4\u63a5 400\uff0c\u4e0d\u505a\u9759\u9ed8\u56de\u9000\uff09----
+        _lv = {"low_vram": payload.get("low_vram") or "off",
+               "chunk_chunks": payload.get("chunk_chunks"),
+               "chunk_head_chunks": payload.get("chunk_head_chunks")}
+        try:
+            _lv_mode, _lv_chunks, _lv_heads = _ra.low_vram_settings(_lv)
+        except ValueError as e:
+            self._send(400, {"error": "\u4f4e\u663e\u5b58\u5206\u5757\u8bbe\u7f6e\u975e\u6cd5\uff1a%s" % e})
+            return
+
         outdir = os.path.join(OUTPUT_DIR, tid)
         cfg = {
             "story": payload["story"],
@@ -613,6 +623,9 @@ class Handler(BaseHTTPRequestHandler):
             "clip": (payload.get("clip") or None),
             "weight_dtype": (payload.get("weight_dtype") or "default"),
             "ref_image_size": (payload.get("ref_image_size") or "match"),
+            "low_vram": _lv_mode,
+            "chunk_chunks": _lv_chunks,
+            "chunk_head_chunks": _lv_heads,
             "review_frames": int(payload.get("review_frames") or 32),
             "loras": [{"name": (l.get("name") or "").strip(), "strength": float(l.get("strength") or 1.0)}
                       for l in (payload.get("loras") or []) if (l.get("name") or "").strip()],

@@ -42,6 +42,14 @@ def skip(name, why):
     skips.append(name)
 
 
+class _ComfyOffline(Exception):
+    """ComfyUI \u6ca1\u5728\u8dd1\uff1a\u5b9e\u673a\u68c0\u67e5\u6574\u5757\u8df3\u8fc7\uff08\u672c\u5957\u6d4b\u8bd5\u4e0d\u8be5\u4f9d\u8d56\u7528\u6237\u5f00\u7740 ComfyUI\uff09\u3002"""
+
+
+# \u5b9e\u673a\u5757\u7528\u5230\u7684\u6807\u5fd7\uff1a\u63a2\u6d4b\u5230 ComfyUI \u5728\u7ebf\u624d\u7f6e True
+_live = False
+
+
 # ---------- A. \u5185\u8054 JS \u8bed\u6cd5 ----------
 html = open(os.path.join(ROOT, "web", "index.html"), encoding="utf-8").read()
 blocks = [s for s in re.findall(r"<script[^>]*>(.*?)</script>", html, re.S)]
@@ -116,9 +124,20 @@ check("\u63d0\u4f9b\u504f\u5dee\u8bb0\u5f55\u590d\u5236\u4e0e issue \u5165\u53e3
       "copyBudgetReport" in html and "issues/new" in html and "\u590d\u5236\u504f\u5dee\u8bb0\u5f55" in html)
 # \u63d0\u4ea4 payload \u5fc5\u987b\u771f\u7684\u5e26\u4e0a\u65b0\u5b57\u6bb5\uff0c\u5426\u5219 UI \u9009\u4e86\u4e5f\u4e0d\u751f\u6548\uff08\u8fd9\u7c7b"\u9009\u9879\u6ca1\u63a5\u7ebf"\u7684\u6f0f\u6d1e\u4e0d\u62a5\u9519\u3001\u53ea\u9759\u9ed8\u7528\u9ed8\u8ba4\u503c\uff09
 _payload = html.split("const payload={", 1)[1].split("};", 1)[0] if "const payload={" in html else ""
-for _f in ("weight_dtype", "ref_image_size", "review_frames"):
+for _f in ("weight_dtype", "ref_image_size", "review_frames",
+           "low_vram", "chunk_chunks", "chunk_head_chunks"):
     check("\u63d0\u4ea4 payload \u542b %s" % _f, (_f + ":") in _payload)
 check("\u9875\u9762\u6709 weight_dtype \u9009\u62e9", 'id="weight_dtype"' in html)
+# \u4f4e\u663e\u5b58\u5206\u5757\uff1a\u9ed8\u8ba4\u5fc5\u987b\u5173\uff0c\u4e09\u6863\u9f50\u5168\uff0c\u4e14\u5206\u5757\u6570\u53ef\u8c03
+check("\u4f4e\u663e\u5b58\u5206\u5757\uff1a\u9009\u62e9\u5668\u4e09\u6863\u9f50\u5168\uff08off/mlp/mlp_attn\uff09",
+      'id="low_vram"' in html and 'value="off"' in html
+      and 'value="mlp"' in html and 'value="mlp_attn"' in html)
+check("\u4f4e\u663e\u5b58\u5206\u5757\uff1a\u5206\u5757\u6570\u53ef\u8c03",
+      'id="chunk_chunks"' in html and 'id="chunk_head_chunks"' in html)
+check("\u4f4e\u663e\u5b58\u5206\u5757\uff1a\u754c\u9762\u5199\u660e\u4f1a\u6539\u53d8\u8f93\u51fa\u4f4d\u3001\u6574\u8f6e\u9700\u56fa\u5b9a",
+      "\u5b83\u4f1a\u6539\u53d8\u8f93\u51fa\u4f4d" in html and "\u6574\u8f6e\u4f18\u5316\u671f\u95f4\u5fc5\u987b\u4fdd\u6301\u540c\u4e00\u8bbe\u7f6e" in html)
+check("\u914d\u7f6e\u5bfc\u51fa/\u56de\u586b\u4e5f\u5e26\u4e0a\u4f4e\u663e\u5b58\u5206\u5757\u5b57\u6bb5",
+      "'low_vram','chunk_chunks','chunk_head_chunks'" in html)
 check("weight_dtype \u53ea\u63d0\u4f9b\u5408\u6cd5\u53d6\u503c",
       "fp8_e4m3fn_fast" in html and "fp16" not in html.split('id="weight_dtype"')[1].split("</select>")[0])
 check("\u9875\u9762\u6709 IndexedDB \u53c2\u8003\u56fe\u6301\u4e45\u5316", "indexedDB.open" in html and "IDB_REF_KEY" in html)
@@ -156,7 +175,10 @@ try:
         # \u5b9e\u673a\uff08ComfyUI \u5728\u7ebf\u65f6\uff09
         try:
             s, j = getj("/api/ping?comfy_url=" + urllib.parse.quote(LIVE_COMFY), timeout=15)
-            check("/api/ping \u62a5\u544a ComfyUI \u5728\u7ebf", j.get("ok") is True, j)
+            if not j.get("ok"):
+                raise _ComfyOffline("ComfyUI \u672a\u8fd0\u884c\u6216\u4e0d\u53ef\u8fbe\uff1a%s" % LIVE_COMFY)
+            _live = True
+            check("/api/ping \u62a5\u544a ComfyUI \u5728\u7ebf", True, j)
             check("/api/ping \u5e26\u663e\u5b58\u4fe1\u606f", j.get("vram_free_gb") is not None, j)
             s, j = getj("/api/doctor?comfy_url=" + urllib.parse.quote(LIVE_COMFY))
             _ids = [c["id"] for c in j.get("checks", [])]
@@ -178,6 +200,12 @@ try:
             check("/api/doctor \u4e5f\u4e0d\u542b\u9884\u7b97\u6b63\u6587\uff08DiT/TE/Token \u4e09\u6bb5\u5f0f\uff09",
                   not any("\u9884\u4f30\u6a21\u578b\uff08DiT\uff09\u5360\u7528\u91cf" in c["detail"] for c in j["checks"]),
                   [c["detail"][:40] for c in j["checks"]])
+            # \u4f4e\u663e\u5b58\u5206\u5757\u7528\u7684\u4e24\u4e2a KJNodes \u8282\u70b9\uff1a\u5b9e\u673a\u5fc5\u987b\u5b58\u5728\uff08\u7f3a\u4e86 Doctor \u4f1a\u62a5"\u53ef\u9009\u8282\u70b9\u7f3a\u5931"\uff09
+            _lvmiss = [c["id"] for c in j["checks"]
+                       if c["id"] in ("opt_MiniMaxChunkFeedForward", "opt_MiniMaxLowVRAMAttention")]
+            check("\u4f4e\u663e\u5b58\u5206\u5757\u6240\u9700\u8282\u70b9\uff08KJNodes\uff09\u5b9e\u673a\u5b58\u5728", not _lvmiss, _lvmiss)
+        except _ComfyOffline as e:
+            skip("\u5b9e\u673a\u68c0\u67e5\uff08ping / doctor / \u4f4e\u663e\u5b58\u8282\u70b9\uff09", str(e))
         except Exception as e:
             skip("\u5b9e\u673a\u81ea\u68c0\u68c0\u67e5", "ComfyUI \u672a\u8fd0\u884c\u6216\u4e0d\u53ef\u8fbe\uff08%s\uff09" % type(e).__name__)
 
@@ -209,9 +237,12 @@ try:
               "token" in (j.get("summary") or "") and "reason" in (j.get("user") or {})
               and len((j.get("budget") or {}).get("lines") or []) >= 4,
               {"summary": (j.get("summary") or "")[:40], "lines": len((j.get("budget") or {}).get("lines") or [])})
-        check("/api/budget \u53ef\u7528\u603b\u91cf\u6263\u9664\u4e86 TE\uff08\u5185\u5b58\u884c\u5b58\u5728\uff09",
-              any(x["label"] == "\u6e32\u67d3\u9636\u6bb5\u53ef\u7528\u603b\u91cf" for x in (j.get("budget") or {}).get("lines") or []),
-              [x["label"] for x in (j.get("budget") or {}).get("lines") or []])
+        if _live:
+            check("/api/budget \u53ef\u7528\u603b\u91cf\u6263\u9664\u4e86 TE\uff08\u5185\u5b58\u884c\u5b58\u5728\uff09",
+                  any(x["label"] == "\u6e32\u67d3\u9636\u6bb5\u53ef\u7528\u603b\u91cf" for x in (j.get("budget") or {}).get("lines") or []),
+                  [x["label"] for x in (j.get("budget") or {}).get("lines") or []])
+        else:
+            skip("/api/budget \u53ef\u7528\u603b\u91cf\uff08\u9700\u8981\u5b9e\u673a\u5185\u5b58\u8bfb\u6570\uff09", "ComfyUI \u79bb\u7ebf")
         s, j = getj("/api/budget?duration=30&megapixels=0.6&card_gb=24")
         check("/api/budget \u5305\u7ebf\u5185\u5224\u5b9a\u4e3a ok", j.get("token_verdict") == "ok", j.get("token_verdict"))
         try:
