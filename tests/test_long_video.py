@@ -230,6 +230,36 @@ check("\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1\u4ecd\u662f\u786c\u544a\u8b66\uff08\u6ca1\
       any("\u5bf9\u6bd4\u5ea6\u4e0b\u6ed1" in x for x in vm.flags(_m_dark, 20.0)), vm.flags(_m_dark, 20.0))
 
 print()
+print("=" * 72)
+print("G. \u63d0\u793a\u8bcd\u5199\u4f5c\u6280\u80fd\uff08skill\uff09\uff1a\u53d6\u4ee3\u300c\u4f18\u5316\u76ee\u6807\u300d\uff0c\u53ef\u7f16\u8f91 / \u53ef\u4ece\u6587\u4ef6\u52a0\u8f7d")
+print("=" * 72)
+_skills = ra.list_skills()
+check("\u5185\u7f6e skill \u9884\u8bbe \u22654 \u4efd", len(_skills) >= 4, [s["name"] for s in _skills])
+check("\u9884\u8bbe\u90fd\u5e26\u540d\u5b57\u4e0e\u6b63\u6587", all(s.get("name") and s.get("text") for s in _skills))
+check("\u9884\u8bbe\u6b63\u6587\u542b\u300c\u5199\u4f5c\u89c4\u5219\u300d\u4e0e\u300c\u8bc4\u5ba1\u4fa7\u91cd\u300d\u4e24\u5757",
+      all("\u5199\u4f5c\u89c4\u5219" in s["text"] and "\u8bc4\u5ba1\u4fa7\u91cd" in s["text"] for s in _skills),
+      [s["file"] for s in _skills if "\u8bc4\u5ba1\u4fa7\u91cd" not in s["text"]])
+check("\u6ca1\u7ed9 skill \u65f6\u4e0d\u6ce8\u5165\u4efb\u4f55\u6bb5\u843d\uff08\u4e0d\u5360 token\uff09", ra.skill_block({}) == "")
+check("skill \u6b63\u6587\u6309\u539f\u6837\u6ce8\u5165", ra.skill_block({"skill": "\u89c4\u5219A\n\u89c4\u5219B"}).count("\u89c4\u5219A") == 1)
+check("skill \u6bb5\u843d\u5e26\u6807\u9898\uff08\u4fbf\u4e8e\u8bc4\u5ba1\u533a\u5206\uff09",
+      "\u5199\u4f5c\u6280\u80fd" in ra.skill_block({"skill": "x"}, title="\u5199\u4f5c\u6280\u80fd\uff08skill\uff09"))
+try:
+    ra.load_skill_text({"skill": "x" * (ra.MAX_SKILL_CHARS + 1)})
+    check("\u8d85\u957f skill \u5fc5\u987b\u62a5\u9519", False, "\u6ca1\u6709\u62a5\u9519")
+except ValueError as e:
+    check("\u8d85\u957f skill \u62a5 ValueError\uff08%s\uff09" % str(e)[:26], True)
+_skill_file = os.path.join(tempfile.gettempdir(), "_h3_skill_test.md")
+with open(_skill_file, "w", encoding="utf-8") as _f:
+    _f.write("# \u6d4b\u8bd5\u6280\u80fd\n\u89c4\u5219\uff1a\u53ea\u6709\u4e00\u6761\n")
+check("skill_path \u80fd\u4ece\u6587\u4ef6\u8bfb\u5165", "\u53ea\u6709\u4e00\u6761" in ra.load_skill_text({"skill_path": _skill_file}))
+check("skill \u6b63\u6587\u4f18\u5148\u4e8e skill_path",
+      ra.load_skill_text({"skill": "\u5185\u8054", "skill_path": _skill_file}) == "\u5185\u8054")
+os.remove(_skill_file)
+check("\u8bc4\u5ba1\u4e0d\u518d\u63d0\u300c\u4f18\u5316\u76ee\u6807\u300d\uff08\u6539\u4e3a\u6280\u80fd/\u9700\u6c42\u53e3\u5f84\uff09",
+      "\u4f18\u5316\u76ee\u6807" not in ra.SYSTEM_CRITIC and "\u5199\u4f5c\u6280\u80fd" in ra.SYSTEM_CRITIC)
+check("\u5bfc\u6f14\u89c4\u5219\u91cc\u4e5f\u6ca1\u6709\u300c\u4f18\u5316\u76ee\u6807\u300d", "\u4f18\u5316\u76ee\u6807" not in d60)
+
+print()
 print("checks:", "ALL PASS" if not fails else "%d FAILED" % len(fails))
 for f in fails:
     print("  -", f)

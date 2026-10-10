@@ -300,8 +300,8 @@ def _audio_mode(cfg, story):
         return True
     if mode == "off":
         return False
-    # auto\uff1a\u60c5\u8282/\u4f18\u5316\u76ee\u6807 \u6216 \u6709\u53c2\u8003\u97f3\u9891 \u2192 \u542f\u7528
-    blob = (f"{story} {cfg.get('optimize_target') or ''}").lower()
+    # auto\uff1a\u60c5\u8282/\u5199\u4f5c\u6280\u80fd \u6216 \u6709\u53c2\u8003\u97f3\u9891 \u2192 \u542f\u7528
+    blob = (f"{story} {cfg.get('skill') or ''}").lower()
     if any(k in blob for k in _AUDIO_KEYWORDS):
         return True
     if cfg.get("_aud_names"):
@@ -414,7 +414,7 @@ def evaluate(llm, video, story, prompt, rundir, n_frames=4, audio_llm=None,
                 print("    " + line)
         cp = (
             f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n"
-            + (f"# \u4f18\u5316\u76ee\u6807\uff08\u672c\u8f6e\u8981\u8fbe\u6210\u7684\u6838\u5fc3\uff0c\u8bc4\u5ba1\u987b\u4e25\u683c\u6838\u9a8c\u5176\u8fbe\u6210\u5ea6\uff09\n{target}\n\n" if target else "")
+            + ra.skill_block(cfg, title="\u5199\u4f5c\u6280\u80fd\uff08\u672c\u8f6e\u8981\u6c42\uff0c\u8bc4\u5ba1\u987b\u4e25\u683c\u6838\u9a8c\u5176\u8fbe\u6210\u5ea6\uff09")
             + f"# \u751f\u6210\u8be5\u89c6\u9891\u4f7f\u7528\u7684\u5b8c\u6574 ref2va prompt\uff08\u5baa\u6cd5\uff1a\u89c6\u9891\u4e0d\u5f97\u8fdd\u80cc\u5176\u4e2d\u4efb\u4f55\u7ea6\u675f\uff09\n{prompt}\n\n"
         )
         if use_audio and audio_llm is not None:
@@ -673,7 +673,7 @@ def _compose(llm, cfg, script, tag):
 def gen_fresh(llm, story, cfg, index, prev_weak=None):
     """\u751f\u6210\u4e00\u4e2a\u5168\u65b0\u7684\u5b8c\u6574\u5267\u672c\uff08\u6574\u7248\u91cd\u5199\uff09\u3002
     prev_weak\uff1a\u6b64\u524d\u672a\u8fc7\u51c6\u5165\u7ebf\u7684\u7248\u672c\u8584\u5f31\u70b9\uff0c\u7528\u6765\u8ba9\u65b0\u7248\u907f\u5f00\u540c\u6837\u95ee\u9898\u3002"""
-    target = cfg.get("optimize_target") or "\u6574\u4f53\u753b\u8d28\u4e0e\u8868\u73b0\u6700\u4f18"
+    skill_txt = ra.skill_block(cfg)
     dur = float(cfg.get("duration", 10) or 10)
     ref_txt, aud_txt = _fmt_refs(cfg)
     weak_hint = ""
@@ -687,9 +687,9 @@ def gen_fresh(llm, story, cfg, index, prev_weak=None):
         )
     dir_prompt = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n"
-        f"# \u4f18\u5316\u76ee\u6807\n{target}\n\n{weak_hint}\n\n"
-        f"\u8bf7\u56f4\u7ed5\u4f18\u5316\u76ee\u6807\uff0c\u5168\u65b0\u521b\u4f5c\u4e00\u4e2a\u5b8c\u6574\u7684 {dur:g} \u79d2\u5267\u672c\uff08\u5206\u955c\u603b\u65f6\u957f={dur:g}s\uff09\uff0c"
-        "\u671d\u6574\u4f53\u4f18\u5316\u76ee\u6807\u505a\u6574\u4f53\u4f18\u5316\u3001\u4e0d\u62c6\u5206\u76ee\u6807\uff1b\u7528\u8db3\u591f\u7cbe\u786e\u7684\u8c03\u5ea6/\u52a8\u4f5c/\u58f0\u97f3/\u8d1f\u5411\u7ea6\u675f\u63cf\u5199\u6765\u843d\u5b9e\u76ee\u6807\u3002"
+        f"{skill_txt}{weak_hint}\n\n"
+        f"\u8bf7\u5168\u65b0\u521b\u4f5c\u4e00\u4e2a\u5b8c\u6574\u7684 {dur:g} \u79d2\u5267\u672c\uff08\u5206\u955c\u603b\u65f6\u957f={dur:g}s\uff09\uff1a\u4e25\u683c\u6309\u4e0a\u9762\u7684\u6545\u4e8b\u63cf\u8ff0"
+        "\uff08\u4ee5\u53ca skill \u91cc\u7684\u5199\u4f5c\u89c4\u5219\uff09\u6765\u5199\uff1b\u7528\u8db3\u591f\u7cbe\u786e\u7684\u8c03\u5ea6/\u52a8\u4f5c/\u58f0\u97f3/\u8d1f\u5411\u7ea6\u675f\u63cf\u5199\u843d\u5b9e\u5b83\u3002"
     )
     script_imgs = _load_script_imgs(llm, cfg)
     img_hint = _img_hint(cfg, script_imgs)
@@ -722,20 +722,20 @@ def weak_parts(rec):
 
 
 def ask_suggestion(llm, story, champion, cfg, tried):
-    """\u4f9d\u4f18\u5316\u76ee\u6807\u4e0e\u5f53\u524d\u6700\u4f18\u8584\u5f31\u70b9\uff0c\u7ed9\u51fa\u4e00\u4e2a\u5177\u4f53\u4fee\u6539\u5efa\u8bae/\u5207\u5165\u65b9\u5411\u3002
+    """\u4f9d\u5199\u4f5c\u6280\u80fd\uff08skill\uff09\u4e0e\u5f53\u524d\u6700\u4f18\u8584\u5f31\u70b9\uff0c\u7ed9\u51fa\u4e00\u4e2a\u5177\u4f53\u4fee\u6539\u5efa\u8bae/\u5207\u5165\u65b9\u5411\u3002
     tried\uff1a\u5df2\u5728\u8be5\u57fa\u7ebf\u4e0a\u8bd5\u8fc7\u4e14\u672a\u63d0\u5347\u7684\u65b9\u5411\uff0c\u672c\u6b21\u987b\u6362\u4e00\u4e2a\u4e0d\u540c\u7684\u3002"""
-    target = cfg.get("optimize_target") or "\u6574\u4f53\u753b\u8d28\u4e0e\u8868\u73b0\u6700\u4f18"
+    skill_txt = ra.skill_block(cfg)
     weak_dims, gaps = weak_parts(champion)
     dims_txt = "\n".join(f"- {d}" for d in weak_dims) or "(\u65e0\u660e\u786e\u4f4e\u5206\u7ef4\u5ea6)"
     gaps_txt = "\n".join(f"- {g}" for g in gaps) or "(\u65e0)"
     tried_txt = ("\n".join(f"- {t}" for t in tried[-8:])) if tried else "(\u65e0\uff0c\u9996\u6b21\u5efa\u8bae)"
     prompt = (
-        f"# \u4f18\u5316\u76ee\u6807\n{target}\n\n"
+        f"{skill_txt}"
         f"# \u5f53\u524d\u6700\u4f18\u5267\u672c\u6982\u8981\n{script_to_text(champion.get('script'))}\n\n"
         f"# \u5f53\u524d\u8bc4\u5206\noverall={champion.get('score')}\n\n"
         f"# \u4f4e\u5206\u7ef4\u5ea6\uff08\u672a\u62ff\u6ee1\u5206\uff09\n{dims_txt}\n\n# \u8bc4\u5ba1\u5dee\u8ddd\n{gaps_txt}\n\n"
         f"# \u5df2\u5728\u6b64\u57fa\u7ebf\u4e0a\u8bd5\u8fc7\u4e14\u672a\u63d0\u5347\u7684\u65b9\u5411\n{tried_txt}\n\n"
-        "\u8bf7\u9488\u5bf9\u4f18\u5316\u76ee\u6807\u4e0e\u4e0a\u8ff0\u8584\u5f31\u70b9\uff0c\u7ed9\u51fa\u3010\u4e00\u4e2a\u3011\u660e\u786e\u7684\u4fee\u6539\u5efa\u8bae\uff08\u5207\u5165\u89d2\u5ea6\uff09\uff1a\u5177\u4f53\u5230\u6539\u54ea\u4e00\u6bb5\u3001\u600e\u4e48\u6539\uff0c"
+        "\u8bf7\u9488\u5bf9\u4e0a\u9762\u7684\u6545\u4e8b\u63cf\u8ff0\u4e0e\u5199\u4f5c\u6280\u80fd\uff08skill\uff09\u4ee5\u53ca\u4e0a\u8ff0\u8584\u5f31\u70b9\uff0c\u7ed9\u51fa\u3010\u4e00\u4e2a\u3011\u660e\u786e\u7684\u4fee\u6539\u5efa\u8bae\uff08\u5207\u5165\u89d2\u5ea6\uff09\uff1a\u5177\u4f53\u5230\u6539\u54ea\u4e00\u6bb5\u3001\u600e\u4e48\u6539\uff0c"
         "\u53ea\u9488\u5bf9\u8584\u5f31\u90e8\u5206\u505a\u5b9a\u70b9\u6539\u8fdb\uff0c\u4e0d\u52a8\u5df2\u8fbe\u6807\u5904\uff0c\u4e14\u4e0d\u8981\u63a8\u5012\u91cd\u6765\u3002"
         "\u5fc5\u987b\u4e0e\u4e0a\u9762\u300c\u5df2\u8bd5\u8fc7\u7684\u65b9\u5411\u300d\u4e0d\u540c\u3002\u53ea\u8f93\u51fa\u4e00\u6bb5\u8bdd\uff08\u65b9\u5411\u8bf4\u660e + \u5177\u4f53\u6539\u6cd5\uff09\uff0c\u4e0d\u8981\u8f93\u51fa\u5176\u4ed6\u6587\u5b57\u3002"
     )
@@ -751,7 +751,7 @@ def ask_suggestion(llm, story, champion, cfg, tried):
 
 def gen_child(llm, story, champion, cfg, suggestion):
     """\u5728\u6700\u4f18\u5267\u672c\u4e0a\u6309\u5efa\u8bae\u5b9a\u70b9\u4fee\u6b63\uff0c\u751f\u6210\u4e00\u4e2a\u5b50\u53d8\u4f53\u3002"""
-    target = cfg.get("optimize_target") or "\u6574\u4f53\u753b\u8d28\u4e0e\u8868\u73b0\u6700\u4f18"
+    skill_txt = ra.skill_block(cfg)
     dur = float(cfg.get("duration", 10) or 10)
     weak_dims, gaps = weak_parts(champion)
     dims_txt = "\n".join(f"- {d}" for d in weak_dims) or "(\u65e0)"
@@ -761,7 +761,7 @@ def gen_child(llm, story, champion, cfg, suggestion):
     img_hint = _img_hint(cfg, script_imgs)
     director_user = (
         f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n# \u53ef\u7528\u53c2\u8003\u56fe\n{ref_txt}{aud_txt}\n\n"
-        f"# \u4f18\u5316\u76ee\u6807\n{target}\n\n"
+        f"{skill_txt}"
         f"# \u5f53\u524d\u6700\u4f18\u5267\u672c\n{json.dumps(champion['script'], ensure_ascii=False)}\n\n"
         f"# \u5f53\u524d\u8bc4\u5206\noverall={champion.get('score')}\n\n"
         f"# \u4f4e\u5206\u7ef4\u5ea6\uff08\u672a\u62ff\u6ee1\u5206\uff09\n{dims_txt}\n\n# \u8bc4\u5ba1\u5dee\u8ddd\n{gaps_txt}\n\n"
@@ -816,7 +816,6 @@ def run_attempt(llm, cand, story, cfg, outdir, label, seed, index, audio_llm=Non
                       n_frames=ra.review_frame_count(_dur, cfg.get("review_frames", 32)),
                       frame_width=int(cfg.get("review_frame_width", 448)),
                       frame_jpeg=bool(cfg.get("review_frame_jpeg", True)),
-                      target=cfg.get("optimize_target"),
                       duration=_dur)
     sc = score_of(critic)
     rec = {**cand, "label": label, "index": index, "video": video, "critic": critic, "score": sc}
@@ -872,11 +871,14 @@ def run_optimizer(cfg, llm):
     manual = (cfg.get("stop_mode") or "auto") == "manual"
 
     # ---- \u8fd0\u884c\u5143\u6570\u636e\uff1a\u6a21\u578b/\u753b\u5e45/\u65f6\u957f/\u6b65\u6570/token \u2014\u2014 \u5199\u8fdb history\uff0c\u4f9b\u663e\u5b58\u9884\u7b97\u6807\u5b9a ----
+    _sk_txt = ra.load_skill_text(cfg) or ""
     run_meta = {
         "model": cfg.get("model"), "megapixels": cfg.get("megapixels"),
         "aspect": normalize_aspect(cfg.get("aspect")), "duration": cfg.get("duration"),
         "steps": cfg.get("steps"), "weight_dtype": cfg.get("weight_dtype"),
         "ref_image_size": cfg.get("ref_image_size"), "flow": _flow(cfg),
+        "skill_chars": len(_sk_txt),
+        "skill_head": (_sk_txt.splitlines() or [""])[0].lstrip("# ").strip()[:60] or None,
         "loras": [l.get("name") for l in (cfg.get("loras") or [])],
     }
     try:
@@ -952,6 +954,11 @@ def run_optimizer(cfg, llm):
         if _lv_mode == "mlp_attn":
             _lv_txt += " \uff0b \u6ce8\u610f\u529b\u5934\u5206\u7ec4 %d" % _lv_heads
         print(f"\u4f4e\u663e\u5b58\u5206\u5757: {_lv_txt}\uff08ComfyUI-KJNodes\uff09| \u4f1a\u6539\u53d8\u8f93\u51fa\u4f4d\uff0c\u6574\u8f6e\u4f18\u5316\u5fc5\u987b\u4fdd\u6301\u540c\u4e00\u8bbe\u7f6e")
+    if _sk_txt:
+        _sk_head = (_sk_txt.splitlines() or [""])[0].lstrip("# ").strip()[:50]
+        print(f"\u5199\u4f5c\u6280\u80fd : \u5df2\u8f7d\u5165 {len(_sk_txt)} \u5b57\u7b26\uff08{_sk_head}\uff09| \u6574\u8f6e\u56fa\u5b9a\uff0c\u6539 skill \u4f1a\u6539\u53d8\u8f93\u51fa")
+    else:
+        print("\u5199\u4f5c\u6280\u80fd : \uff08\u7a7a\uff09\u53ea\u6309\u5b98\u65b9\u516d\u6bb5\u89c4\u8303\u4e0e\u6545\u4e8b\u63cf\u8ff0\u5199")
     print(f"\u79cd\u5b50     : {seed}\uff08\u5168\u7a0b\u6052\u5b9a\uff09| \u51c6\u5165\u7ebf\u2265{admission} | \u8fed\u4ee3\u4e0a\u9650 {max_iter} | \u540c\u57fa\u7ebf\u8010\u5fc3 {base_patience}")
     print("=" * 60)
 
@@ -1237,7 +1244,12 @@ def load_config(path):
     c.setdefault("quick_render", False)        # \u5feb\u901f\u6e32\u67d3\uff1a\u4ec5\u5206\u8fa8\u7387\u4e0e\u6b65\u6570 \u00d70.707\uff08\u5176\u4f59\u540c\u7cbe\u6e32\uff09
     c.setdefault("fine_render", True)          # \u7ed3\u675f\u7cbe\u6e32\uff1a\u722c\u5c71\u7ed3\u675f\u540e\u7528\u5168\u5206\u8fa8\u7387/\u5168\u6b65\u6570\u518d\u6e32\u4e00\u6b21
     c.setdefault("flow", "ref2va")             # \u6d41\u7a0b\uff1aref2va\uff08\u9ed8\u8ba4\uff09| i2va\uff08\u9996\u5e27\u56fe\u751f\u89c6\u9891\uff0c\u82f1\u6587\u63d0\u793a\u8bcd\uff09
-    c.setdefault("optimize_target", None)
+    # \u63d0\u793a\u8bcd\u5199\u4f5c\u6280\u80fd\uff08skill\uff09\uff1a\u9875\u9762\u6587\u672c\u6846\u7684\u6b63\u6587\uff1bCLI \u4e5f\u53ef\u7528 skill_path \u6307\u4e00\u4e2a .md
+    c.setdefault("skill", None)
+    c.setdefault("skill_path", None)
+    if c.get("optimize_target"):
+        print("[config] optimize_target \u5df2\u5e9f\u5f03\uff08\u6539\u4e3a skill\uff09\uff1a\u8fd9\u4e00\u9879\u8fd9\u6b21\u88ab\u5ffd\u7565\uff0c\u8981\u4ec0\u4e48\u6548\u679c\u8bf7\u5199\u8fdb\u6545\u4e8b\u63cf\u8ff0\u6216 skill \u6b63\u6587\u3002")
+    c.pop("optimize_target", None)
     c.setdefault("admission_threshold", 5)
     c.setdefault("max_iterations", 12)
     c.setdefault("base_patience", 3)

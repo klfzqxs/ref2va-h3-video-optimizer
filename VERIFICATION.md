@@ -194,6 +194,31 @@ python core/doctor.py --comfy http://127.0.0.1:8000 --duration 60   # 手动自�
 > 影响面：修掉"预设首帧"会**改变生成的提示词 → 改变输出**（因为旧口径本来就在改变输出）；
 > 这是把错误约束去掉，不是等价重构。上面每一条都由 `tests/test_long_video.py` E 段守着，改回旧行为立刻变红。
 
+## 11. 提示词写作技能（skill）与参考行交互修复
+
+### 11.1 skill：取代「优化目标」
+
+| 机制 | 验证方法 | 实测结果 |
+|---|---|---|
+| 预设来自单一真相 | `ra.list_skills()` 读 `skills/*.md`；`GET /api/skills` 返回同一份 | 5 份预设，各带名字与正文，正文都含「写作规则」与「评审侧重」两块 |
+| 留空不注入 | `ra.skill_block({})` | `""`（不占 token）；有 skill 时按原样注入并带标题 |
+| 三种来源 | `cfg['skill']`（页面文本框/配置正文）、`cfg['skill_path']`（CLI 读文件）、`cfg['skill']` 优先 | 内联 30 字符注入成功；`skill_path` 指向 `skills/10-cinematic.md` 注入 338 字符；两者同时给时内联胜出 |
+| 长度上限 | `load_skill_text` 对超长报错；server `payload` 校验 | 20001 字符 → `ValueError`；上限 `MAX_SKILL_CHARS = 20000` |
+| **旧字段兼容** | 配置里带 `optimize_target` | 打印「`optimize_target` 已废弃（改为 skill）…」，`cfg` 里**不残留**该键，不报错 |
+| 提示词口径同步 | 断言 `SYSTEM_CRITIC` 与 `system_director(60)` 都不再出现「优化目标」 | 通过（改为「写作技能（skill）」/「技能要求贴合度」） |
+| 页面接线 | 静态断言：有 `#skill` 文本框、`#skillBtns` 与 `loadSkills/applySkill`；`#target` 与「优化目标」已消失；payload/导出/回填都带 `skill` | 通过（另有 `node --check` 保证内联 JS 语法） |
+| 端到端（离线） | `load_config → ra.skill_block` 四种情形 | 内联 / 文件 / 旧字段 / 无 skill 全部符合预期 |
+| 可追溯 | `run` 元数据记录 `skill_chars` 与 `skill_head` | 通过（真跑时头部还会打印一行「写作技能 : 已载入 N 字符（标题）」） |
+
+### 11.2 参考图行：可替换 + 删除同步缓存
+
+| 机制 | 验证方法 | 实测结果 |
+|---|---|---|
+| 上传后能改 | 静态断言存在 `pickRowFile()`、`.refpick`、`替换` 按钮，且缩略图/文件名标签都绑定它 | 通过（此前 file 输入框被 `display:none` 藏掉且无入口） |
+| 旧行为确实消失 | 反向断言：`"已从本机缓存恢复；重新选择文件可替换"` 不再出现在页面里 | 通过 |
+| 音频行不再坏图 | 断言存在 `.thumbfile` 与 `^data:image` 判断（只有图片才插 `<img>`） | 通过 |
+| 删除同步 IndexedDB | 断言 `removeRow()` 存在、删除按钮调它、函数体里有 `row.remove()` 与 `saveRefsToIdb()` | 通过（此前删掉的行刷新会复活） |
+
 ### 10.2 「光照/色彩必须演变、色调非恒定」（同类 bug）
 
 > 触发问题：长视频写作规则 10) 原文是「光照与色彩写成**贯穿全程的连续演变**：明确写出各阶段的光位、

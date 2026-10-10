@@ -27,7 +27,7 @@ cd ref2va-h3-video-optimizer
 ```json
 {
   "story": "一句话或一小段场景描述，作为这一条视频的剧情大纲",
-  "optimize_target": "这条视频要重点达成的质量点",
+  "skill": "（可选）提示词写作技能：写作规则 + 评审侧重，留空即只用官方规范；也可用 skill_path 指一个 .md",
   "flow": "ref2va",
   "refs": [{"path": "C:\\你的路径\\face.png"}, {"path": "C:\\你的路径\\scene.png"}],
   "audios": [],
@@ -142,5 +142,5 @@ python optimizer.py --config config.json
 - **`llm_base` / `llm_model` 缺失**：config 里必须显式填这两个字段。
 - **提示参考文件不存在**：`refs` 的 `path` 指向的文件不存在；换成真实绝对路径，或用绝对路径。
 - **渲染无输出**：先 `python comfy.py check <workflow>` 看后端校验是否通过；确认 ComfyUI 在 `comfy_url` 上运行、模型文件存在。
-- **评分一直很低**：检查 `llm_base` 模型是否可以看图；`optimize_target` 写具体些。
+- **评分一直很低**：检查 `llm_base` 模型是否可以看图；把具体要求写进故事描述，或在 `skill` 里写清写作规则与评审侧重。
 - **报 ffmpeg 相关错误**：确认系统 PATH 里有 ffmpeg。

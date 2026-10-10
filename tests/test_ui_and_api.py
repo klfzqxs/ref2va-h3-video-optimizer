@@ -141,6 +141,25 @@ check("\u914d\u7f6e\u5bfc\u51fa/\u56de\u586b\u4e5f\u5e26\u4e0a\u4f4e\u663e\u5b58
 check("weight_dtype \u53ea\u63d0\u4f9b\u5408\u6cd5\u53d6\u503c",
       "fp8_e4m3fn_fast" in html and "fp16" not in html.split('id="weight_dtype"')[1].split("</select>")[0])
 check("\u9875\u9762\u6709 IndexedDB \u53c2\u8003\u56fe\u6301\u4e45\u5316", "indexedDB.open" in html and "IDB_REF_KEY" in html)
+# \u53c2\u8003\u56fe\u4e0a\u4f20\u540e\u5fc5\u987b\u8fd8\u80fd\u6362\uff1a\u66fe\u7ecf\u628a file \u8f93\u5165\u6846 display:none \u85cf\u8d77\u6765\u3001\u53ea\u7559\u4e00\u5f20\u7f29\u7565\u56fe\uff0c\u7528\u6237\u65e0\u8def\u53ef\u6539
+check("\u53c2\u8003\u56fe\u4e0a\u4f20\u540e\u53ef\u66ff\u6362\uff08\u7f29\u7565\u56fe/\u66ff\u6362\u6309\u94ae\u89e6\u53d1\u672c\u884c\u6587\u4ef6\u6846\uff09",
+      "function pickRowFile" in html and "className='refpick'" in html
+      and "pickRowFile(row)" in html and "\u66ff\u6362" in html)
+check("\u65e7\u7684\u300c\u85cf\u6389\u8f93\u5165\u6846\u300d\u6587\u6848\u5df2\u79fb\u9664",
+      "\u5df2\u4ece\u672c\u673a\u7f13\u5b58\u6062\u590d\uff1b\u91cd\u65b0\u9009\u62e9\u6587\u4ef6\u53ef\u66ff\u6362" not in html)
+check("\u97f3\u9891\u884c\u4e0d\u518d\u63d2\u574f\u56fe\uff08\u6539\u6587\u4ef6\u540d\u6807\u7b7e\uff09", "thumbfile" in html and "^data:image" in html)
+check("\u5220\u9664\u53c2\u8003\u884c\u4f1a\u540c\u6b65\u6e05 IndexedDB\uff08\u5426\u5219\u5237\u65b0\u540e\u590d\u6d3b\uff09",
+      "function removeRow" in html and "removeRow(this)" in html
+      and "row.remove();" in html and "saveRefsToIdb();" in html)
+# \u63d0\u793a\u8bcd\u5199\u4f5c\u6280\u80fd\uff08skill\uff09\uff1a\u53d6\u4ee3\u539f\u6765\u90a3\u4e2a"\u4f18\u5316\u76ee\u6807"\u6846
+check("\u9875\u9762\u6709 skill \u6587\u672c\u6846", 'id="skill"' in html and "<textarea id=\"skill\"" in html)
+check("skill \u6709\u9884\u8bbe\u6309\u94ae\u5bb9\u5668\u4e0e\u52a0\u8f7d\u51fd\u6570",
+      'id="skillBtns"' in html and "loadSkills" in html and "applySkill" in html)
+check("\u65e7\u7684\u300c\u4f18\u5316\u76ee\u6807\u300d\u6846\u5df2\u79fb\u9664",
+      'id="target"' not in html and "\u4f18\u5316\u76ee\u6807" not in html)
+check("skill \u968f\u4efb\u52a1\u63d0\u4ea4\u4e0e\u914d\u7f6e\u5bfc\u51fa",
+      "skill:$('skill').value" in html and "'name','skill'" in html
+      and "skill:'skill'" in html)
 
 # ---------- B/C. \u63a5\u53e3 ----------
 env = dict(os.environ)
@@ -224,6 +243,14 @@ try:
         # \u65b0\u589e\u63a5\u53e3
         s, j = getj("/api/defaults")
         check("/api/defaults \u8fd4\u56de\u793a\u4f8b\u914d\u7f6e", s == 200 and "story" in j and "llm_base" in j, list(j)[:6])
+        check("\u793a\u4f8b\u914d\u7f6e\u5df2\u6539\u7528 skill\uff08\u4e0d\u518d\u662f optimize_target\uff09",
+              "skill" in j and "optimize_target" not in j, [k for k in j if "skill" in k or "target" in k])
+        s, j = getj("/api/skills")
+        _sk = j.get("skills") or []
+        check("/api/skills \u8fd4\u56de\u5185\u7f6e\u9884\u8bbe\uff08\u22654 \u4efd\uff0c\u5404\u5e26\u540d\u5b57\u4e0e\u6b63\u6587\uff09",
+              s == 200 and len(_sk) >= 4 and all(x.get("name") and x.get("text") for x in _sk),
+              [x.get("name") for x in _sk])
+        check("/api/skills \u7ed9\u51fa\u957f\u5ea6\u4e0a\u9650", (j.get("max_chars") or 0) > 0, j.get("max_chars"))
 
         # \u663e\u5b58\u9884\u7b97\u4f30\u8ba1
         s, j = getj("/api/budget?duration=60&megapixels=1.0&card_gb=24")

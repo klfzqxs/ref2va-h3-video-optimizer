@@ -183,7 +183,7 @@ def _form_meta(payload):
     """\u628a\u63d0\u4ea4\u7684\u9664\u6587\u4ef6\u6570\u636e\u5916\u7684\u8868\u5355\u5b57\u6bb5\u5b58\u4e0b\u6765\uff0c\u4f9b\u5386\u53f2\u680f\u56de\u586b\u3002"""
     files = [{"name": f.get("name"), "note": f.get("note") or ""} for f in payload.get("files") or []]
     return {
-        "name": payload.get("name"), "story": payload.get("story"), "optimize_target": payload.get("optimize_target"),
+        "name": payload.get("name"), "story": payload.get("story"), "skill": payload.get("skill"),
         "duration": payload.get("duration"), "model": payload.get("model"), "clip": payload.get("clip"),
         "loras": payload.get("loras"),
         "sampler": payload.get("sampler"), "scheduler": payload.get("scheduler"), "steps": payload.get("steps"),
@@ -483,6 +483,12 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, est)
             except Exception as e:
                 self._send(500, {"error": "\u9884\u7b97\u4f30\u8ba1\u5931\u8d25\uff1a%s: %s" % (type(e).__name__, e)})
+        elif path == "/api/skills":
+            # \u9875\u9762\u300c\u8f7d\u5165\u9884\u8bbe\u300d\u6309\u94ae\u7684\u6570\u636e\u6e90\uff1a\u76f4\u63a5\u8bfb skills/*.md\uff08\u4e0e\u5e94\u7528\u4fa7\u540c\u4e00\u4efd\u6587\u4ef6\uff09
+            try:
+                self._send(200, {"skills": _ra.list_skills(), "max_chars": _ra.MAX_SKILL_CHARS})
+            except Exception as e:
+                self._send(500, {"error": "\u8bfb\u53d6 skills/ \u5931\u8d25\uff1a%s" % e})
         elif path == "/api/defaults":
             # \u300c\u56de\u586b\u793a\u4f8b\u300d\uff1a\u76f4\u63a5\u8bfb examples/example_config.json\uff0c\u4fdd\u8bc1\u53ea\u6709\u4e00\u4e2a\u771f\u76f8\u6765\u6e90
             try:
@@ -606,7 +612,7 @@ class Handler(BaseHTTPRequestHandler):
         cfg = {
             "story": payload["story"],
             "flow": flow,
-            "optimize_target": payload.get("optimize_target") or "overall quality and performance",
+            "skill": (payload.get("skill") or "").strip() or None,
             "refs": refs,
             "audios": audios,
             "video_edit": bool(payload.get("video_edit")) and flow != "i2va",

@@ -45,7 +45,10 @@
   .ck.ok{border-color:#2e7d32}
   .ck.warn{border-color:#b8860b}
   .ck.bad{border-color:#b3261e}
-  .thumb{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-right:6px;vertical-align:middle}
+  .thumb{width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-right:2px;vertical-align:middle;cursor:pointer}
+  .thumbfile{display:inline-flex;align-items:center;height:44px;max-width:150px;overflow:hidden;text-overflow:ellipsis;
+    white-space:nowrap;padding:0 8px;border:1px solid var(--line);border-radius:6px;color:var(--dim);font-size:12px;cursor:pointer}
+  .refpick{display:flex;align-items:center;gap:6px;min-width:0}
   .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:12px;border:1px solid var(--line);color:var(--dim)}
   .pill.ok{border-color:#2e7d32;color:#7ddc81}
   .pill.bad{border-color:#b3261e;color:#ff9b93}
@@ -78,8 +81,14 @@
   <h2>任务设定</h2>
   <div class="grid">
     <div class="field"><label>任务名称</label><input id="name" value="mytask"></div>
-    <div class="field"><label>优化目标</label><input id="target" value="整体画质与表现最优"></div>
     <div class="field"><label>视频时长（秒，1–60）</label><input id="duration" type="number" value="10" min="1" max="60" step="1" title="单次生成长度上限 60 秒：≤15 秒在 H3 训练范围内；15–60 秒为实测长视频可用区（60 秒是质量高峰）；超过 60 秒请分两段生成并用尾帧续接"></div>
+  </div>
+  <div class="field accent"><label>提示词写作技能 skill（可编辑；点下面的按钮载入预设。留空＝只按官方六段规范与你的故事描述写）</label>
+    <textarea id="skill" rows="6" placeholder="留空即可。想固定写作方向时，点下面的预设载入，或直接在这里写/改，例如：
+- 写作规则：光影怎么处理、人物表演写到什么颗粒度、环境声分几层
+- 评审侧重：这几轮特别核验什么（如身份一致性、手部、口型同步）
+注意：整轮优化期间 skill 必须固定不动（改它＝改输出）。"></textarea>
+    <div class="row" id="skillBtns"><span class="hint">载入预设：</span></div>
   </div>
   <div class="field accent"><label>画面内容描述（纯文字描述即可；不填参考图时即纯文字驱动 T2VA）</label>
     <textarea id="story">清晨的山谷，晨雾在林间缓缓流动，阳光从云隙洒落，一条溪流蜿蜒而下，远处雪山映着晨光，环境声只有风声与鸟鸣。</textarea>
@@ -246,7 +255,7 @@ function addRow(containerId, kind){
     return;
   }
   const d=document.createElement('div'); d.className='refrow';
-  d.innerHTML=`<input type="file" class="file" ${kind==='audio'?'accept="audio/*"':'accept="image/*"'}><input class="note" placeholder="这张${kind==='audio'?'音频':'图'}参考什么（如：${kind==='audio'?'流水声/鸟鸣/风声':'山峰/森林/瀑布/天空/光影'}）"><button class="ghost small" onclick="this.parentElement.remove()">删除</button>`;
+  d.innerHTML=`<input type="file" class="file" ${kind==='audio'?'accept="audio/*"':'accept="image/*"'}><input class="note" placeholder="这张${kind==='audio'?'音频':'图'}参考什么（如：${kind==='audio'?'流水声/鸟鸣/风声':'山峰/森林/瀑布/天空/光影'}）"><button class="ghost small" onclick="removeRow(this)">删除</button>`;
   c.appendChild(d);
 }
 function collectRows(containerId){
@@ -331,13 +340,44 @@ async function idbGet(k){try{const db=await idbOpen();return await new Promise((
   q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);});}catch(e){return null;}}
 function setRowData(row,name,dataUrl){
   row._name=name; row._data=dataUrl;
+  // 旧的「缩略图 + 替换」整块移除（重复选择时不会叠出多个按钮）
+  row.querySelectorAll('.refpick').forEach(x=>x.remove());
   row.querySelectorAll('img.thumb').forEach(x=>x.remove());
-  if(dataUrl){
-    const inp=row.querySelector('input.file'); if(inp) inp.style.display='none';
-    const img=document.createElement('img'); img.className='thumb'; img.src=dataUrl;
-    img.title=(name||'')+'（已从本机缓存恢复；重新选择文件可替换）';
-    row.insertBefore(img,row.firstChild);
+  const inp=row.querySelector('input.file');
+  if(!dataUrl){                                   // 没有文件：露出原始文件框
+    if(inp) inp.style.display='';
+    return;
   }
+  if(inp) inp.style.display='none';               // 有文件：隐藏原始框，改用缩略图/文件名 + 替换按钮
+  const box=document.createElement('span'); box.className='refpick';
+  if(/^data:image\//i.test(dataUrl)){             // 图片才做缩略图（音频用文件名标签，避免坏图）
+    const img=document.createElement('img'); img.className='thumb'; img.src=dataUrl;
+    img.title='点击替换：'+(name||'');
+    img.onclick=()=>pickRowFile(row);
+    box.appendChild(img);
+  } else {
+    const sp=document.createElement('span'); sp.className='thumbfile';
+    sp.textContent='🎧 '+(name||'已选音频'); sp.title='点击替换：'+(name||'');
+    sp.onclick=()=>pickRowFile(row);
+    box.appendChild(sp);
+  }
+  const btn=document.createElement('button');
+  btn.className='ghost small'; btn.type='button'; btn.textContent='替换';
+  btn.title='重新选择文件（也可以直接点缩略图/文件名）';
+  btn.onclick=()=>pickRowFile(row);
+  box.appendChild(btn);
+  row.insertBefore(box,row.firstChild);
+}
+/* 重新选择：直接触发该行隐藏的文件框（用户说"上传后没地方改"——这就是那个入口） */
+function pickRowFile(row){
+  const inp=row&&row.querySelector('input.file');
+  if(inp) inp.click();
+}
+/* 删除一行：必须同时更新 IndexedDB，否则刷新后删除的行会"复活" */
+function removeRow(btn){
+  const row=btn&&btn.closest('.refrow'); if(!row) return;
+  row.remove();
+  saveRefsToIdb();
 }
 async function saveRefsToIdb(){
   const grab=sel=>[...document.querySelectorAll(sel+' .refrow')]
@@ -366,6 +406,38 @@ function bindRefCapture(){
     const t=e.target;
     if(t&&t.classList&&t.classList.contains('file')) captureRefFile(t);
   });
+}
+/* ==================== 提示词写作技能（skill） ====================
+   一个可编辑文本框 + 预设按钮；预设来自 GET /api/skills（服务端读 skills/*.md，单一真相来源）。 */
+async function loadSkills(){
+  const box=$('skillBtns'); if(!box) return;
+  try{
+    const j=await (await fetch('/api/skills')).json();
+    const list=j.skills||[];
+    box.innerHTML='<span class="hint">载入预设：</span>';
+    list.forEach(s=>{
+      const b=document.createElement('button');
+      b.className='ghost small'; b.type='button'; b.textContent=s.name;
+      b.title='载入后可以直接编辑（整轮优化期间不要再改）';
+      b.onclick=()=>applySkill(s.name,s.text);
+      box.appendChild(b);
+    });
+    const c=document.createElement('button');
+    c.className='ghost small'; c.type='button'; c.textContent='清空';
+    c.title='清空 skill（只用官方六段规范与故事描述）';
+    c.onclick=()=>applySkill('（清空）','');
+    box.appendChild(c);
+    const h=document.createElement('span'); h.className='hint';
+    h.textContent=(j.max_chars?('（上限 '+j.max_chars+' 字符）'):'')+'文本框内容会随任务保存并落盘，便于事后追溯';
+    box.appendChild(h);
+  }catch(e){ box.innerHTML='<span class="hint">预设读取失败：'+esc(e.message)+'</span>'; }
+}
+function applySkill(name,text){
+  const ta=$('skill'); if(!ta) return;
+  const cur=ta.value.trim();
+  if(cur && cur!==(text||'') && !confirm('文本框里已有内容，载入「'+name+'」会覆盖它，继续？')) return;
+  ta.value=text||'';
+  if(name!=='（清空）') toast('已载入预设：'+name+'（可继续编辑）');
 }
 function updateWeightDtypeHint(){
   const h=$('wdHint'); if(!h) return;
@@ -436,6 +508,7 @@ async function copyBudgetReport(){
   L.push('- 时长 '+($('duration').value||'?')+' 秒 · 画幅 '+($('megapixels').value||'?')+' MP · 步数 '+($('steps').value||'?'));
   L.push('- 模型 `'+($('model').value||'(未选)')+'`');
   L.push('- weight_dtype `'+$('weight_dtype').value+'` · ref_image_size `'+$('ref_image_size').value+'`');
+  L.push('- skill '+($('skill').value.trim()?('已载入 '+$('skill').value.trim().length+' 字符：'+$('skill').value.trim().split('\\n')[0].slice(0,40)):'（空）'));
   L.push('- low_vram `'+$('low_vram').value+'` · chunk_chunks '+$('chunk_chunks').value
          +' / head_chunks '+$('chunk_head_chunks').value+'（会改变输出位，报画质问题时必须带上）');
   L.push('');
@@ -515,7 +588,7 @@ async function run(){
   }
   if(gate==='forced') toast('已确认强行继续（预算估计：不可用，可能会换页到虚拟内存，很慢）');
   const payload={
-    name:$('name').value, story:$('story').value, optimize_target:$('target').value,
+    name:$('name').value, story:$('story').value, skill:$('skill').value,
     duration:dur, model:$('model').value||null, clip:$('clip').value||null,
     loras:collectLoras(),
     sampler:$('sampler').value, scheduler:$('scheduler').value, steps:+($('steps').value||20),
@@ -685,7 +758,7 @@ async function renderRounds(jobId){
 /* ==================== 配置导出 / 回填 / 清空 ==================== */
 function collectConfig(){
   return {
-    story:$('story').value, optimize_target:$('target').value, flow:currentFlow(),
+    story:$('story').value, skill:$('skill').value, flow:currentFlow(),
     llm_base:$('llm_base').value, llm_model:$('llm_model').value,
     llm_api_key:$('llm_api_key').value||null,
     audio_llm_base:$('audio_base').value||null, audio_llm_model:$('audio_model').value||null,
@@ -726,7 +799,7 @@ function resetForm(){
   location.reload();
 }
 
-const FORM_IDS=['name','target','duration','story','model','clip','weight_dtype','ref_image_size','review_frames','low_vram','chunk_chunks','chunk_head_chunks','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
+const FORM_IDS=['name','skill','duration','story','model','clip','weight_dtype','ref_image_size','review_frames','low_vram','chunk_chunks','chunk_head_chunks','sampler','scheduler','steps','seed','megapixels','admission','maxiter','patience','llm_base','llm_model','llm_api_key','comfy_url','audio_base','audio_model','audio_key'];
 function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
 function saveForm(){
   try{
@@ -762,7 +835,7 @@ function restoreForm(){
   applyFlowUI();
 }
 function bindSave(){ document.addEventListener('input', debounce(saveForm,400)); document.addEventListener('change', debounce(saveForm,400)); }
-const APPLY_MAP={name:'name',story:'story',target:'optimize_target',duration:'duration',model:'model',clip:'clip',weight_dtype:'weight_dtype',ref_image_size:'ref_image_size',review_frames:'review_frames',low_vram:'low_vram',chunk_chunks:'chunk_chunks',chunk_head_chunks:'chunk_head_chunks',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
+const APPLY_MAP={name:'name',story:'story',skill:'skill',duration:'duration',model:'model',clip:'clip',weight_dtype:'weight_dtype',ref_image_size:'ref_image_size',review_frames:'review_frames',low_vram:'low_vram',chunk_chunks:'chunk_chunks',chunk_head_chunks:'chunk_head_chunks',sampler:'sampler',scheduler:'scheduler',steps:'steps',seed:'seed',megapixels:'megapixels',admission:'admission_threshold',maxiter:'max_iterations',patience:'base_patience',llm_base:'llm_base',llm_model:'llm_model',llm_api_key:'llm_api_key',comfy_url:'comfy_url',audio_base:'audio_llm_base',audio_model:'audio_llm_model',audio_key:'audio_llm_api_key'};
 function applyForm(f){
   if(!f) return;
   Object.entries(APPLY_MAP).forEach(([id,key])=>{ if($(id)&&f[key]!=null&&f[key]!=='') $(id).value=f[key]; });
@@ -782,7 +855,7 @@ function applyForm(f){
   if(!$('lorarows').children.length) addLoraRow();
   applyFlowUI();
 }
-$('run').onclick=run; initFolders(); loadJobs(); restoreForm(); bindSave(); bindRefCapture();
+$('run').onclick=run; initFolders(); loadJobs(); restoreForm(); bindSave(); bindRefCapture(); loadSkills();
 $('rounds').addEventListener('click',e=>{
   const b=e.target.closest('[data-copy]'); if(!b) return;
   copyFromUrl(b.getAttribute('data-copy'), b.getAttribute('data-label')||'');
