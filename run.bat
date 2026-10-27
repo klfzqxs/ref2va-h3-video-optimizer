@@ -25,18 +25,20 @@ rem ============================
 
 echo ================================================
 echo   MiniMAX H3 Ref2VA/I2VA Video Quality Optimizer 2.0
-echo   Local UI : http://127.0.0.1:%PORT%/
+echo   Local UI : http://127.0.0.1:%PORT%/  (opens automatically)
 echo   LAN      : http://your-ip:%PORT%/   (HOST=0.0.0.0)
 echo   Stop     : press Ctrl+C
+echo   Note     : if %PORT% is taken (e.g. by the League client),
+echo              the server picks the next free port and prints it.
 echo ================================================
 
-rem open the browser a moment after the server starts
-start "" powershell -NoProfile -Command "Start-Sleep -Seconds 2; Start-Process 'http://127.0.0.1:%PORT%/'"
-
+rem The server opens the browser itself (it knows the real port after auto-fallback).
 rem run the server in the foreground
 "%PYTHON%" -u server.py
+set "RC=%ERRORLEVEL%"
 
 echo.
+if not "%RC%"=="0" echo [server exited with code %RC% - see the messages above]
 echo [closed]
 pause
 endlocal

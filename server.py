@@ -668,10 +668,55 @@ class Handler(BaseHTTPRequestHandler):
                          "queued": True, "position": _queue_position(tid)})
 
 
+def _open_browser_later(url, delay=1.5):
+    """\u8d77\u670d\u52a1\u540e\u81ea\u52a8\u5f00\u6d4f\u89c8\u5668\uff08run.bat \u539f\u6765\u8d1f\u8d23\u8fd9\u4ef6\u4e8b\uff1b\u79fb\u5230\u8fd9\u8fb9\u624d\u80fd\u8ddf\u4e0a"\u7aef\u53e3\u81ea\u52a8\u6362"\uff09\u3002"""
+    if os.environ.get("NO_BROWSER"):
+        return
+
+    def _go():
+        try:
+            time.sleep(delay)
+            import webbrowser
+            webbrowser.open(url)
+        except Exception:
+            pass
+    threading.Thread(target=_go, daemon=True).start()
+
+
+def _bind_server(host, port, tries=20):
+    """\u7ed1\u5b9a\u76d1\u542c\u7aef\u53e3\uff1b\u88ab\u5360\u7528/\u4e0d\u53ef\u7528\u5c31\u987a\u5ef6\u8bd5\u4e0b\u4e00\u4e2a\u7aef\u53e3\u3002
+
+    \u4e3a\u4ec0\u4e48\u8981\u987a\u5ef6\uff1a8090 \u8fd9\u79cd"\u770b\u8d77\u6765\u6ca1\u4eba\u7528"\u7684\u7aef\u53e3\u7ecf\u5e38\u88ab\u522b\u7684\u8f6f\u4ef6\u5360\u7740\u2014\u2014\u5178\u578b\u4f8b\u5b50\u662f
+    **\u82f1\u96c4\u8054\u76df\u5ba2\u6237\u7aef\uff08Riot Pallas\uff09\u5c31\u5728 127.0.0.1:8090 \u4e0a**\uff0c\u649e\u4e0a\u4e4b\u540e Windows \u4f1a\u629b
+    PermissionError(WinError 10013)\uff0c\u4ee5\u524d\u7684\u8868\u73b0\u5c31\u662f .bat \u7a97\u53e3\u4e00\u95ea\u3001\u670d\u52a1\u6ca1\u8d77\u6765\u3002
+    \u73b0\u5728\u6539\u6210\u81ea\u52a8\u6362\u7aef\u53e3\u5e76\u628a\u771f\u5b9e\u5730\u5740\u6253\u51fa\u6765\uff08\u6d4f\u89c8\u5668\u4e5f\u7531\u8fd9\u91cc\u6253\u5f00\uff0c\u6240\u4ee5\u4e0d\u4f1a\u5f00\u9519\u7aef\u53e3\uff09\u3002
+    """
+    last = None
+    for i in range(tries):
+        p = port + i
+        try:
+            srv = ThreadingHTTPServer((host, p), Handler)
+        except OSError as e:
+            last = e
+            code = getattr(e, "winerror", None) or getattr(e, "errno", None)
+            print("\u7aef\u53e3 %d \u4e0d\u53ef\u7528\uff08%s\uff1a%s\uff09\uff0c\u6362 %d \u8bd5\u8bd5\u2026" % (p, type(e).__name__, code, p + 1))
+            continue
+        if i:
+            print("\u26a0 \u9ed8\u8ba4\u7aef\u53e3 %d \u88ab\u522b\u7684\u7a0b\u5e8f\u5360\u7528\u4e86\uff08\u5e38\u89c1\uff1a\u82f1\u96c4\u8054\u76df\u5ba2\u6237\u7aef\uff09\uff0c\u5df2\u81ea\u52a8\u6539\u7528 %d\u3002"
+                  % (port, p))
+        return srv, p
+    raise SystemExit("\u4ece %d \u8d77\u8fde\u7eed %d \u4e2a\u7aef\u53e3\u90fd\u7ed1\u4e0d\u4e0a\uff08\u6700\u540e\u4e00\u4e2a\u9519\u8bef\uff1a%s\uff09\u3002"
+                     "\u8bf7\u5173\u6389\u5360\u7528\u7aef\u53e3\u7684\u7a0b\u5e8f\uff0c\u6216\u7528  set PORT=xxxx  \u6307\u5b9a\u4e00\u4e2a\u7a7a\u95f2\u7aef\u53e3\u3002"
+                     % (port, tries, last))
+
+
 def main():
     print("MiniMAX H3 Ref2VA/I2VA \u89c6\u9891\u8d28\u91cf\u4f18\u5316\u5668 2.0\u6b63\u5f0f\u7248")
-    print("web UI on http://%s:%s  (LAN: use your machine IP)" % (HOST, PORT))
-    srv = ThreadingHTTPServer((HOST, PORT), Handler)
+    srv, port = _bind_server(HOST, PORT)
+    host_for_url = "127.0.0.1" if HOST in ("0.0.0.0", "::", "") else HOST
+    url = "http://%s:%d/" % (host_for_url, port)
+    print("web UI on %s  (LAN: use your machine IP)" % url.rstrip("/"))
+    _open_browser_later(url)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

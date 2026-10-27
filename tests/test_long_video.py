@@ -260,6 +260,54 @@ check("\u8bc4\u5ba1\u4e0d\u518d\u63d0\u300c\u4f18\u5316\u76ee\u6807\u300d\uff08\
 check("\u5bfc\u6f14\u89c4\u5219\u91cc\u4e5f\u6ca1\u6709\u300c\u4f18\u5316\u76ee\u6807\u300d", "\u4f18\u5316\u76ee\u6807" not in d60)
 
 print()
+print("=" * 72)
+print("H. \u8bc4\u5ba1\u6ce8\u5165 skill\uff08\u56de\u5f52\uff1a\u66fe\u5728 evaluate \u91cc\u5f15\u7528\u4e0d\u5b58\u5728\u7684 cfg \u2192 \u771f\u8dd1\u7b2c\u4e00\u6b21\u8bc4\u5ba1\u5c31\u5d29\uff09")
+print("=" * 72)
+
+
+class _FakeCriticLLM:
+    """\u5047\u89c6\u89c9\u8bc4\u5ba1\uff1a\u8bb0\u5f55\u6536\u5230\u7684 prompt\uff0c\u56de\u4e00\u4e2a\u80fd\u89e3\u6790\u7684\u8bc4\u5206 JSON\u3002"""
+
+    def __init__(self):
+        self.seen = []
+
+    def encode_image(self, path):                 # noqa: ARG002
+        return "IMG"
+
+    def vision(self, system, user, imgs, **kw):    # noqa: ARG002
+        self.seen.append(user)
+        return ('{"overall": 7.5, "dimensions": {"subject_identity": 8}, '
+                '"verdict": "ok", "gaps": []}')
+
+
+_real_ef, _real_analyze, _real_flags = opt.ra.extract_frames, opt.vm.analyze, opt.vm.flags
+opt.ra.extract_frames = lambda *a, **k: ["/tmp/a.jpg", "/tmp/b.jpg"]
+try:
+    _sk = ra.skill_block({"skill": "# \u6280\u80fdX\n- \u8bc4\u5ba1\u4fa7\u91cd\uff1a\u624b\u90e8\u4e0d\u80fd\u5d29\n"}, title="\u5199\u4f5c\u6280\u80fd\uff08\u672c\u8f6e\u8981\u6c42\uff09")
+    _l1 = _FakeCriticLLM()
+    _r1 = opt.evaluate(_l1, "v.mp4", "\u6545\u4e8bS", "\u63d0\u793a\u8bcdP", tempfile.gettempdir(),
+                       n_frames=2, skill=_sk)
+    check("\u6709 skill \u65f6 evaluate \u4e0d\u5d29\u4e14\u8fd4\u56de\u8bc4\u5206\uff08NameError \u56de\u5f52\uff09",
+          isinstance(_r1, dict) and _r1.get("overall") == 7.5, _r1)
+    check("\u8bc4\u5ba1 prompt \u91cc\u786e\u5b9e\u5e26\u4e0a\u4e86 skill \u6b63\u6587", any("\u624b\u90e8\u4e0d\u80fd\u5d29" in u for u in _l1.seen))
+
+    _l2 = _FakeCriticLLM()
+    opt.evaluate(_l2, "v.mp4", "\u6545\u4e8bS", "\u63d0\u793a\u8bcdP", tempfile.gettempdir(), n_frames=2)
+    check("\u4e0d\u7ed9 skill \u65f6\u8bc4\u5ba1 prompt \u4e0d\u542b\u300c\u5199\u4f5c\u6280\u80fd\u300d\u6bb5",
+          bool(_l2.seen) and all("\u5199\u4f5c\u6280\u80fd" not in u for u in _l2.seen))
+
+    # \u957f\u89c6\u9891\uff08>15 \u79d2\uff09\uff1a\u5ba2\u89c2\u6307\u6807\u4e0e skill \u5fc5\u987b\u540c\u65f6\u5728\u573a
+    opt.vm.analyze = lambda v, d: {"duration": d, "motion_mean": 0.5}
+    opt.vm.flags = lambda m, d: []
+    _l3 = _FakeCriticLLM()
+    opt.evaluate(_l3, "v.mp4", "\u6545\u4e8bS", "\u63d0\u793a\u8bcdP", tempfile.gettempdir(),
+                 n_frames=2, skill=_sk, duration=30)
+    check("\u957f\u89c6\u9891\u8bc4\u5ba1\u540c\u65f6\u5e26 skill \u4e0e\u5ba2\u89c2\u6307\u6807",
+          any("\u624b\u90e8\u4e0d\u80fd\u5d29" in u and "\u5ba2\u89c2\u6307\u6807" in u for u in _l3.seen))
+finally:
+    opt.ra.extract_frames, opt.vm.analyze, opt.vm.flags = _real_ef, _real_analyze, _real_flags
+
+print()
 print("checks:", "ALL PASS" if not fails else "%d FAILED" % len(fails))
 for f in fails:
     print("  -", f)

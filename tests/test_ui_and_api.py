@@ -293,6 +293,64 @@ finally:
     except Exception:
         proc.kill()
 
+# ---------- D. \u7aef\u53e3\u88ab\u5360\u7528\u65f6\u81ea\u52a8\u987a\u5ef6\uff08\u771f\u5b9e\u6545\u969c\uff1a8090 \u88ab\u82f1\u96c4\u8054\u76df\u5ba2\u6237\u7aef\u5360\u7528 \u2192 \u670d\u52a1\u8d77\u4e0d\u6765\uff09 ----------
+# \u590d\u73b0\u8981\u70b9\uff1a\u5360\u7528\u65b9\u5fc5\u987b**\u72ec\u5360\u7ed1\u5b9a**\uff08Windows \u7684 SO_EXCLUSIVEADDRUSE\uff09\uff0c\u5426\u5219 SO_REUSEADDR
+# \u4f1a\u8ba9\u6211\u4eec\u7684\u670d\u52a1\u7167\u6837\u7ed1\u4e0a\u540c\u4e00\u4e2a\u7aef\u53e3\uff0c\u538b\u6839\u89e6\u53d1\u4e0d\u5230\u987a\u5ef6\uff08\u7b2c\u4e00\u7248\u6d4b\u8bd5\u5c31\u662f\u8fd9\u4e48\u5199\u9519\u7684\uff09\u3002
+BUSY, FALLBACK = 8111, 8112
+_occ = _srv2 = None
+_out2 = ""
+try:
+    import socket as _socket
+    _occ = _socket.socket()
+    if hasattr(_socket, "SO_EXCLUSIVEADDRUSE"):      # Windows
+        _occ.setsockopt(_socket.SOL_SOCKET, _socket.SO_EXCLUSIVEADDRUSE, 1)
+    else:
+        _occ.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    _occ.bind(("127.0.0.1", BUSY))
+    _occ.listen(5)
+
+    # D1. \u51fd\u6570\u7ea7\uff1a\u88ab\u5360\u7528\u7684\u7aef\u53e3\u5fc5\u987b\u987a\u5ef6\uff08\u5feb\u3001\u786e\u5b9a\u6027\uff09
+    if ROOT not in sys.path:
+        sys.path.insert(0, ROOT)
+    import server as _srvmod
+    _s1, _p1 = _srvmod._bind_server("127.0.0.1", BUSY, tries=5)
+    check("_bind_server \u5728\u88ab\u5360\u7528\u65f6\u987a\u5ef6\u5230\u4e0b\u4e00\u4e2a\u7aef\u53e3", _p1 == FALLBACK, _p1)
+    _s1.server_close()
+
+    # D2. \u542f\u52a8\u8def\u5f84\uff1a\u8fdb\u7a0b\u4e0d\u80fd\u56e0\u4e3a\u7aef\u53e3\u88ab\u5360\u5c31\u9000\u51fa\uff0c\u4e14\u8981\u6253\u5370\u771f\u5b9e\u7aef\u53e3
+    env2 = dict(os.environ)
+    env2.update(PORT=str(BUSY), HOST="127.0.0.1", NO_BROWSER="1", PYTHONIOENCODING="utf-8")
+    _srv2 = subprocess.Popen([sys.executable, "-u", "server.py"], cwd=ROOT, env=env2,
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, encoding="utf-8", errors="replace")
+    time.sleep(4)
+    check("\u7aef\u53e3\u88ab\u5360\u7528\u65f6\u670d\u52a1\u8fdb\u7a0b\u4e0d\u4f1a\u76f4\u63a5\u9000\u51fa", _srv2.poll() is None, _srv2.returncode)
+    _srv2.terminate()
+    try:
+        _out2 = _srv2.communicate(timeout=8)[0] or ""
+    except Exception:
+        _srv2.kill()
+    check("\u542f\u52a8\u65e5\u5fd7\u91cc\u8bf4\u660e\u4e86\u987a\u5ef6\uff08\u542b\u771f\u5b9e\u7aef\u53e3\uff09",
+          "\u5df2\u81ea\u52a8\u6539\u7528" in _out2 and ("web UI on http://127.0.0.1:%d" % FALLBACK) in _out2,
+          [l for l in _out2.splitlines() if "\u7aef\u53e3" in l or "web UI" in l][:3])
+finally:
+    for _p in (_srv2, _occ):
+        try:
+            if _p is not None and hasattr(_p, "terminate"):
+                _p.terminate()
+                if hasattr(_p, "communicate"):
+                    _p.communicate(timeout=5)
+        except Exception:
+            try:
+                _p.kill()
+            except Exception:
+                pass
+    if _occ is not None:
+        try:
+            _occ.close()
+        except Exception:
+            pass
+
 print()
 print("checks:", "ALL PASS" if not fails else "%d FAILED" % len(fails),
       ("(%d skipped)" % len(skips)) if skips else "")

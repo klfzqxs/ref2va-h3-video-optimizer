@@ -392,7 +392,7 @@ def analyze_ref_audio(llm_audio, path, note=""):
 
 
 def evaluate(llm, video, story, prompt, rundir, n_frames=4, audio_llm=None,
-             use_audio=None, frame_width=768, frame_jpeg=False, target=None,
+             use_audio=None, frame_width=768, frame_jpeg=False, skill="",
              duration=None):
     """\u8bc4\u5ba1\uff1a\u62bd\u5e27\u7ed9\u753b\u9762 LLM\u3002\u82e5 use_audio\uff0c\u5219\u5148\u97f3\u9891\u6a21\u578b\u542c\u58f0\u4ea7\u51fa\u5b9e\u6d4b\u8bc1\u636e\uff0c
     \u5e76\u5165\u753b\u9762 LLM \u7684 prompt\uff0c\u8ba9\u5b83\u7edf\u4e00\u8bc4 audio_affordance \u4e0e overall\u3002
@@ -414,7 +414,7 @@ def evaluate(llm, video, story, prompt, rundir, n_frames=4, audio_llm=None,
                 print("    " + line)
         cp = (
             f"# \u6545\u4e8b\u5927\u7eb2\n{story}\n\n"
-            + ra.skill_block(cfg, title="\u5199\u4f5c\u6280\u80fd\uff08\u672c\u8f6e\u8981\u6c42\uff0c\u8bc4\u5ba1\u987b\u4e25\u683c\u6838\u9a8c\u5176\u8fbe\u6210\u5ea6\uff09")
+            + (skill or "")
             + f"# \u751f\u6210\u8be5\u89c6\u9891\u4f7f\u7528\u7684\u5b8c\u6574 ref2va prompt\uff08\u5baa\u6cd5\uff1a\u89c6\u9891\u4e0d\u5f97\u8fdd\u80cc\u5176\u4e2d\u4efb\u4f55\u7ea6\u675f\uff09\n{prompt}\n\n"
         )
         if use_audio and audio_llm is not None:
@@ -816,6 +816,7 @@ def run_attempt(llm, cand, story, cfg, outdir, label, seed, index, audio_llm=Non
                       n_frames=ra.review_frame_count(_dur, cfg.get("review_frames", 32)),
                       frame_width=int(cfg.get("review_frame_width", 448)),
                       frame_jpeg=bool(cfg.get("review_frame_jpeg", True)),
+                      skill=ra.skill_block(cfg, title="\u5199\u4f5c\u6280\u80fd\uff08\u672c\u8f6e\u8981\u6c42\uff0c\u8bc4\u5ba1\u987b\u4e25\u683c\u6838\u9a8c\u5176\u8fbe\u6210\u5ea6\uff09"),
                       duration=_dur)
     sc = score_of(critic)
     rec = {**cand, "label": label, "index": index, "video": video, "critic": critic, "score": sc}
